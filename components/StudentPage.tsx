@@ -1,42 +1,60 @@
-/* eslint-disable no-trailing-spaces */
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
+import React, { useRef, useState, useEffect } from 'react';
+import { 
+    View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, 
+    Animated, StatusBar, Alert, BackHandler 
+} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 
 const StudentDashboard = ({ navigation }) => {
-    const [menuVisible, setMenuVisible] = useState(false); // State to control menu modal visibility
-    const [profileDropdownVisible, setProfileDropdownVisible] = useState(false); // State for profile dropdown visibility
-    const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
+    const [menuVisible, setMenuVisible] = useState(false);
+    const [profileDropdownVisible, setProfileDropdownVisible] = useState(false);
+    const slideAnim = useRef(new Animated.Value(-400)).current;
 
+    useEffect(() => {
+        const backAction = () => {
+            Alert.alert("Exit App", "Are you sure you want to exit?", [
+                { text: "Cancel", onPress: () => null, style: "cancel" },
+                { text: "Yes", onPress: () => BackHandler.exitApp() }
+            ]);
+            return true; // Prevent default back action
+        };
+
+        const backHandler = BackHandler.addEventListener(
+            "hardwareBackPress",
+            backAction
+        );
+
+        return () => backHandler.remove(); // Cleanup on unmount
+    }, []);
 
     const openMenu = () => {
-      setMenuVisible(true); // Show the modal
-      Animated.timing(slideAnim, {
-        toValue: 0, // Slide into the screen from the left
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+        setMenuVisible(true);
+        Animated.timing(slideAnim, {
+            toValue: 0,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
     };
-  
+
     const closeMenu = () => {
-      Animated.timing(slideAnim, {
-        toValue: -400, // Slide back off-screen to the left
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => setMenuVisible(false)); // Hide modal after animation
+        Animated.timing(slideAnim, {
+            toValue: -400,
+            duration: 300,
+            useNativeDriver: true,
+        }).start(() => setMenuVisible(false));
     };
-  
+
     const toggleProfileDropdown = () => {
-      setProfileDropdownVisible(!profileDropdownVisible);
-  };
+        setProfileDropdownVisible(!profileDropdownVisible);
+    };
 
-  const closeProfileDropdown = () => {
-      setProfileDropdownVisible(false);
-  };
+    const closeProfileDropdown = () => {
+        setProfileDropdownVisible(false);
+    };
 
-    const navigateToPage = (page: string) => {
-      setMenuVisible(false); // Close the menu
-      navigation.navigate(page); // Navigate to the selected page
+    const navigateToPage = (page) => {
+        setMenuVisible(false);
+        navigation.navigate(page);
     };
 
 

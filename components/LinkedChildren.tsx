@@ -1,224 +1,215 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
-import Toast from 'react-native-toast-message'; // Import Toast
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
+import Toast from "react-native-toast-message";
+import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { auth, db } from "../components/firebase"; // Import auth to get logged-in user
 
-const LinkedParent = ({ navigation }) => {
-  const [isAdded, setIsAdded] = useState(false);
+const LinkedChildren = ({ navigation }) => {
+  const [linkedStudents, setLinkedStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [parentUid, setParentUid] = useState(null); // Store logged-in parent's UID
 
-  const toggleIcon = () => {
-    // Show Toast on toggle action after state change
-    setIsAdded(prevState => {
-      const newState = !prevState;
-      if (newState) {
-        Toast.show({
-          type: 'success', // You can change the type if you prefer
-          text1: 'Account removed successfully',
-        });
-      } else {
-        Toast.show({
-          type: 'error', // You can change the type if you prefer
-          text1: 'Account removed successfully',
-        });
+  useEffect(() => {
+    const fetchLinkedStudents = async () => {
+      setLoading(true);
+      const user = auth.currentUser; // Get currently logged-in user
+
+      if (!user) {
+        console.log("❌ No user logged in.");
+        setLoading(false);
+        return;
       }
-      return newState; // Update the state after showing the toast
-    });
+
+      setParentUid(user.uid); // Store parent UID
+
+      try {
+        console.log("📌 Fetching linked students for parent UID:", user.uid);
+
+        // 🔥 Fetch linked students from the correct subcollection inside the logged-in parent's document
+        const linkedStudentsRef = collection(db, `parent/${user.uid}/LinkedStudent`);
+        const linkedStudentsSnapshot = await getDocs(linkedStudentsRef);
+
+        const students = linkedStudentsSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        console.log("✅ Retrieved Linked Students:", students);
+        setLinkedStudents(students);
+      } catch (error) {
+        console.error("❌ Error fetching linked students:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLinkedStudents();
+  }, []);
+
+  const unlinkStudent = async (studentId) => {
+    Alert.alert("Confirm Unlink", "Are you sure you want to unlink this student?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Unlink",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            if (!parentUid) {
+              console.error("❌ No parent UID found.");
+              return;
+            }
+  
+            // 🔥 Delete from parent's `LinkedStudent` subcollection
+            const linkedStudentRef = doc(db, `parent/${parentUid}/LinkedStudent/${studentId}`);
+            await deleteDoc(linkedStudentRef);
+  
+            // 🔥 Delete from student's `LinkedParent` subcollection
+            const linkedParentRef = doc(db, `students/${studentId}/LinkedParent/${parentUid}`);
+            await deleteDoc(linkedParentRef);
+  
+            console.log("✅ Student successfully unlinked from both parent and student collections.");
+            Toast.show({ type: "success", text1: "Student unlinked successfully" });
+  
+            // Update local state to reflect the change
+            setLinkedStudents((prevStudents) => prevStudents.filter((student) => student.id !== studentId));
+          } catch (error) {
+            console.error("❌ Error unlinking student:", error);
+            Toast.show({ type: "error", text1: "Failed to unlink student" });
+          }
+        },
+      },
+    ]);
   };
+  
 
   return (
     <>
       <ScrollView style={styles.container}>
-        {/* Navigation Bar */}
+        {/* 🔹 Navigation Bar */}
         <View style={styles.navbar}>
-          <TouchableOpacity onPress={() => navigation.navigate('ParentPage')}>
-            <Image
-              source={require('../images/back.png')} // Replace with your back icon image path
-              style={styles.back}
-            />
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Image source={require("../images/back.png")} style={styles.back} />
           </TouchableOpacity>
           <View style={styles.navCenter}>
-            <Image
-              source={require('../images/logo.png')} // Replace with your logo image path
-              style={styles.logo}
-            />
-            <Image source={require('../images/GateSync.png')} style={styles.gatesync} />
+            <Image source={require("../images/logo.png")} style={styles.logo} />
+            <Image source={require("../images/GateSync.png")} style={styles.gatesync} />
           </View>
-          <TouchableOpacity onPress={() => console.log('Profile pressed')}>
-            <Image
-              source={require('../images/account.png')} // Replace with your profile icon image path
-              style={styles.profileIcon}
-            />
+          <TouchableOpacity onPress={() => console.log("Profile pressed")}>
+            <Image source={require("../images/account.png")} style={styles.profileIcon} />
           </TouchableOpacity>
         </View>
 
-        {/* Message container with conditional rendering of elements */}
-        <View style={styles.messagecontainer}>
-          {!isAdded && (
-            <>
-              <View style={styles.chatbar} />
-              <Text style={styles.chatname}>John Doe</Text>
-              <View style={styles.chatcircle}>
-                <Image
-                  source={require('../images/account_circle.png')}
-                  style={styles.chatIcon}
-                />
-                <TouchableOpacity onPress={toggleIcon}>
-                  <Image
-                    source={require('../images/minus.png')} // Replace with your "minus" icon path
-                    style={styles.addicon}
-                  />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+        {/* 🔹 Header */}
+        <View style={styles.content}>
+          <Text style={styles.welcomeText}>Linked Students</Text>
         </View>
 
-        <View style={styles.bar} />
-        <View style={styles.content}>
-          <Text style={styles.welcomeText}>Linked Accounts</Text>
-        </View>
+        {/* 🔄 Loading Indicator */}
+        {loading ? (
+          <ActivityIndicator size="large" color="#6B9BFA" style={styles.loader} />
+        ) : (
+          <>
+            {/* 🏁 Display Linked Students */}
+            {linkedStudents.length > 0 ? (
+              linkedStudents.map((student) => (
+                <View key={student.id} style={styles.studentCard}>
+                  {/* Profile Picture */}
+                  <View style={styles.profileWrapper}>
+                    <Image source={require("../images/account_circle.png")} style={styles.profileImage} />
+                  </View>
+
+                  {/* Student Info */}
+                  <View style={styles.infoContainer}>
+                    <Text style={styles.studentName}>{student.username}</Text>
+                    <Text style={styles.studentInfo}>ID: {student.idNumber}</Text>
+                    <Text style={styles.studentInfo}>Course: {student.course}</Text>
+                  </View>
+
+                  {/* Unlink Button */}
+                  <TouchableOpacity onPress={() => unlinkStudent(student.id)} style={styles.removeButton}>
+                    <Image source={require("../images/minus.png")} style={styles.removeIcon} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.noResults}>No linked students found</Text>
+            )}
+          </>
+        )}
       </ScrollView>
-      {/* Toast Component */}
+
+      {/* Toast Notification */}
       <Toast />
     </>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
+  container: { flex: 1, backgroundColor: "#f5f5f5" },
   navbar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#BCE5FF',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#BCE5FF",
     paddingVertical: 10,
     paddingHorizontal: 15,
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
-  navCenter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  logo: {
-    width: 35,
-    height: 34,
-    resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  gatesync: {
-    width: 100,
-    height: 34,
-    top: 5,
-    resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  back: {
-    width: 30,
-    height: 30,
-    resizeMode: 'contain',
-  },
-  profileIcon: {
-    width: 30,
-    height: 30,
-    resizeMode: 'contain',
-  },
-  content: {
-    marginTop: 20,
-    padding: 20,
-  },
-  bar: {
-    height: 54,
-    width: '90%',
-    backgroundColor: '#6B9BFA',
-    alignSelf: 'center',
-    borderRadius: 21,
+  navCenter: { flexDirection: "row", alignItems: "center" },
+  logo: { width: 35, height: 34, resizeMode: "contain", marginRight: 10 },
+  gatesync: { width: 100, height: 34, resizeMode: "contain" },
+  back: { width: 30, height: 30, resizeMode: "contain" },
+  profileIcon: { width: 30, height: 30, resizeMode: "contain" },
+  content: { marginTop: 20, padding: 20 },
+  welcomeText: { fontSize: 28, fontWeight: "bold", color: "#5394F2", textAlign: "center" },
+  loader: { marginTop: 50 },
+  studentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    width: "90%",
     padding: 15,
-    top: '-30%',
-    shadowColor: 'black',
-    shadowOffset: { width: 4, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: 15,
+    alignSelf: "center",
+    marginTop: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 4,
   },
-  chatIcon: {
-    width: 104,
-    height: 104,
-    top: -15,
-    right: 15,
-  },
-  addicon: {
-    width: 33,
-    height: 33,
-    top: -45,
-    right: 10,
-  },
-  chatcircle: {
-    backgroundColor: '#fff',
-    width: 81,
-    height: 75,
+  profileWrapper: {
+    width: 60,
+    height: 60,
     borderRadius: 50,
-    top: 5,
-    right: -30,
+    backgroundColor: "#E3F2FD",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 15,
   },
-  chatname: {
-    fontFamily: 'Kanit',
-    fontSize: 20,
-    color: '#fff',
-    fontWeight: '800',
-    alignSelf: 'center',
-    textAlign: 'auto',
-    top: 50,
+  profileImage: { width: 50, height: 50 },
+  infoContainer: { flex: 1 },
+  studentName: { fontSize: 18, fontWeight: "bold", color: "#333" },
+  studentInfo: { fontSize: 14, color: "#666", marginTop: 3 },
+  removeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E195AB",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  chatbar: {
-    backgroundColor: '#6b9bfa',
-    width: '80%',
-    height: 48,
-    borderRadius: 21,
-    shadowColor: 'black',
-    shadowOffset: { width: 4, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-    alignSelf: 'center',
-    alignContent: 'center',
-    top: '45%',
-  },
-  messagecontainer: {
-    backgroundColor: '#CFE5FF',
-    width: '90%',
-    height: 206,
-    borderRadius: 21,
-    alignSelf: 'center',
-    top: '20%',
-    shadowColor: 'black',
-    shadowOffset: { width: 4, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  welcomeText: {
-    fontSize: 36,
-    fontWeight: '800',
-    fontFamily: 'Kanit',
-    color: '#5394F2',
-    bottom: 290,
-  },
+  removeIcon: { width: 25, height: 25 },
+  noResults: { textAlign: "center", marginTop: 20, fontSize: 16, color: "#999" },
 });
 
-export default LinkedParent;
+export default LinkedChildren;

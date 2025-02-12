@@ -1,10 +1,64 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
+import { useNavigation } from '@react-navigation/native'; // Import useNavigation for navigation
+import { getFirestore, doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
 
-const MessageScreen = ({ navigation }) => {
+const MessageScreen = () => {
   const [menuVisible, setMenuVisible] = useState(false); // State to control menu modal visibility
+  const [studentName, setStudentName] = useState([]); // State for student's name (now an array)
   const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
+  const navigation = useNavigation(); // Access the navigation prop
+  const auth = getAuth(); // Firebase auth
+  const db = getFirestore(); // Firebase Firestore
+
+  useEffect(() => {
+    const fetchLinkedStudents = async () => {
+      const user = auth.currentUser; // Get the current logged-in user
+      if (user) {
+        const parentDocRef = doc(db, 'parent', user.uid); // Reference to the parent document
+        const parentDocSnap = await getDoc(parentDocRef);
+    
+        if (parentDocSnap.exists()) {
+          // Access the 'LinkedStudent' subcollection inside the parent document
+          const linkedStudentsRef = collection(parentDocRef, 'LinkedStudent'); // Updated subcollection name
+          const linkedStudentsSnap = await getDocs(linkedStudentsRef);
+    
+          if (!linkedStudentsSnap.empty) {
+            const studentUsernames = linkedStudentsSnap.docs.map((doc) => {
+              // Log the entire document to check its structure
+              console.log('Student Document Data:', doc.data());
+    
+              const studentData = doc.data();
+              // Check if 'username' exists in the data
+              if (studentData && studentData.username) {
+                console.log('Fetched Username:', studentData.username); // Log username if it exists
+                return studentData.username; // Return username if it exists
+              } else {
+                console.log('No username found for this student:', doc.id);
+                return null;
+              }
+            }).filter((username) => username !== null); // Filter out null values if no username exists
+    
+            if (studentUsernames.length > 0) {
+              setStudentName(studentUsernames); // Set the list of student usernames
+            } else {
+              console.log('No valid usernames found in linked students');
+            }
+          } else {
+            console.log('No linked students found');
+          }
+        } else {
+          console.log('Parent document not found');
+        }
+      }
+    };
+    
+  
+    fetchLinkedStudents();
+  }, []);
+  
 
   const openMenu = () => {
     setMenuVisible(true); // Show the modal
@@ -32,7 +86,7 @@ const MessageScreen = ({ navigation }) => {
     <>
       {/* Main ScrollView */}
       <ScrollView style={styles.container}>
-      <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+        <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
         {/* Navigation Bar */}
         <View style={styles.navbar}>
           <TouchableOpacity onPress={openMenu}>
@@ -50,20 +104,27 @@ const MessageScreen = ({ navigation }) => {
           </View>
         </View>
 
-
         {/* Message container */}
         <View style={styles.messagecontainer}>
           <TouchableOpacity onPress={() => navigation.navigate('ParentChatPage')}>
-            <View style={styles.chatbar}/>
-            <Text style={styles.chatname}>John Doe</Text>
+            <View style={styles.chatbar} />
+            {studentName && studentName.length > 0 ? (
+              studentName.map((username, index) => (
+                <Text key={index} style={styles.chatname}>
+                  {username}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.chatname}>No Linked Students</Text>
+            )}
           </TouchableOpacity>
         </View>
         <View style={styles.chatcircle}>
-              <Image
-                source={require('../images/account_circle.png')}
-                style={styles.chatIcon}
-              />
-            </View>
+          <Image
+            source={require('../images/account_circle.png')}
+            style={styles.chatIcon}
+          />
+        </View>
 
         <View style={styles.content}>
           <Text style={styles.welcomeText}>Messages</Text>
@@ -96,7 +157,7 @@ const MessageScreen = ({ navigation }) => {
               <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Settings</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => navigateToPage('StudentLogin')} style={styles.menuOption}>
+              <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Logout</Text>
               </TouchableOpacity>
             </View>

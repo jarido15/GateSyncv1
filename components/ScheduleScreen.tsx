@@ -19,10 +19,10 @@ const ScheduleScreen = ({ navigation }) => {
       try {
         const user = auth.currentUser;
         if (user) {
-          const userId = user.uid;
+          const studentUid = user.uid;
 
-          // Fetch all schedules for the user
-          const schedulesQuery = query(collection(db, 'schedules'), where('uid', '==', userId));
+          // Fetch all schedules for the student
+          const schedulesQuery = query(collection(db, 'schedules'), where('studentUid', '==', studentUid));
           const querySnapshot = await getDocs(schedulesQuery);
           const schedulesList = querySnapshot.docs.map(doc => doc.data());
           setUserSchedules(schedulesList);
@@ -51,17 +51,17 @@ const ScheduleScreen = ({ navigation }) => {
     try {
       const user = auth.currentUser;
       if (user) {
-        const userId = user.uid;
+        const studentUid = user.uid;
 
         const scheduleData = {
           date: selectedDate,
           timeIn: timeIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timeOut: timeOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: serverTimestamp(),
-          uid: userId,
+          studentUid: studentUid,
         };
 
-        const scheduleDocRef = doc(db, 'schedules', userId);
+        const scheduleDocRef = doc(db, 'schedules', studentUid);
         await setDoc(scheduleDocRef, scheduleData, { merge: true });
 
         Alert.alert('Success', 'Schedule saved successfully.');

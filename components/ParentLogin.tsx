@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 import { auth } from '../components/firebase'; // Ensure this imports your Firebase config
 
 const ParentLogin = ({ navigation }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');  // Declare email state
+  const [password, setPassword] = useState('');  // Declare password state
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -25,13 +26,29 @@ const ParentLogin = ({ navigation }) => {
     }
 
     try {
+      // Sign in the user with Firebase Authentication
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('ParentPage'); // Navigate to Parent Dashboard
+      
+      // Get the current authenticated user's UID
+      const user = auth.currentUser;
+
+      // Reference to the 'parent' document in Firestore using the UID
+      const db = getFirestore();
+      const parentDocRef = doc(db, 'parent', user.uid);
+      const parentDocSnap = await getDoc(parentDocRef);
+
+      // Check if the parent document exists in Firestore
+      if (parentDocSnap.exists()) {
+        // The user is a parent, navigate to the Parent Dashboard
+        navigation.navigate('ParentPage');
+      } else {
+        // The user is not a parent
+        Alert.alert('Login Failed', 'You are not registered as a parent.');
+      }
     } catch (error) {
       Alert.alert('Login Failed', error.message);
     }
   };
-
 
   return (
     <View style={styles.container}>

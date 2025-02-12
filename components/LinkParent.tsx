@@ -3,14 +3,17 @@ import {
   View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList 
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { collection, query, where, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
-import { db } from '../components/firebase'; // Ensure Firebase is configured
-import { getAuth } from 'firebase/auth'; // Import Firebase Auth
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from '../components/firebase';
+import { getAuth } from 'firebase/auth';
 
 const LinkedParent = ({ navigation }) => {
-  const [isAdded, setIsAdded] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [linkedParents, setLinkedParents] = useState([]);
+
+  const auth = getAuth();
+  const studentUid = auth.currentUser ? auth.currentUser.uid : '';
 
   // 🔍 Search Parent in Firestore
   const searchParent = async () => {
@@ -32,84 +35,87 @@ const LinkedParent = ({ navigation }) => {
       setSearchResults(results);
 
       if (results.length === 0) {
-        Toast.show({
-          type: 'info',
-          text1: 'No Parent Found',
-        });
+        Toast.show({ type: 'info', text1: 'No Parent Found' });
       }
     } catch (error) {
-      console.error('Error searching:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error searching parent',
-      });
+      console.error('❌ Error searching:', error);
+      Toast.show({ type: 'error', text1: 'Error searching parent' });
     }
   };
 
-  // ✅ Toggle Parent Linking and Update Firestore (Add Parent to Student)
-// ✅ Toggle Parent Linking and Update Firestore (Add Parent to Student)
-const toggleIcon = async (parentUid) => {
-  setIsAdded(!isAdded);
-
-  try {
-    // Log the parent UID and student UID for debugging
-    const studentUid = auth.currentUser ? auth.currentUser.uid : '';
-    console.log('Parent UID:', parentUid);
-    console.log('Student UID:', studentUid);
-
-    // Query students collection to find the student by UID field
-    const studentsRef = collection(db, 'students');
-    const q = query(studentsRef, where('uid', '==', studentUid));
-    const querySnapshot = await getDocs(q);
-
-    if (querySnapshot.empty) {
-      throw new Error(`Student with UID ${studentUid} does not exist`);
+  const toggleParentLink = async (parent) => {
+    if (!auth.currentUser) {
+      Toast.show({ type: 'error', text1: 'No Student Found' });
+      return;
     }
-
-    // Get the student document
-    const studentDoc = querySnapshot.docs[0]; // Assumes there is only one match
-    const studentDocRef = studentDoc.ref;
-
-    // Check if the parent document exists using the parent UID
-    const parentDocRef = doc(db, 'parent', parentUid);
-    const parentDocSnap = await getDoc(parentDocRef);
-
-    if (!parentDocSnap.exists()) {
-      throw new Error(`Parent with UID ${parentUid} does not exist`);
+  
+    try {
+      // 🔍 Find the student's document ID (`docUid`)
+      const studentQuery = query(collection(db, 'students'), where('uid', '==', auth.currentUser.uid));
+      const studentSnapshot = await getDocs(studentQuery);
+  
+      if (studentSnapshot.empty) {
+        Toast.show({ type: 'error', text1: 'Student not found in Firestore' });
+        return;
+      }
+  
+      // Get student's document ID (`docUid`)
+      const studentDoc = studentSnapshot.docs[0];
+      const docUid = studentDoc.id; 
+      const studentData = studentDoc.data(); // Get student data
+  
+      // Parent's `LinkedStudent` reference
+      const linkedStudentRef = doc(db, 'parent', parent.id, 'LinkedStudent', docUid);
+      
+      // Student's `LinkedParent` reference
+      const linkedParentRef = doc(db, 'students', docUid, 'LinkedParent', parent.id);
+  
+      // Check if already linked
+      const linkedParentSnapshot = await getDocs(collection(db, 'students', docUid, 'LinkedParent'));
+      const alreadyLinked = linkedParentSnapshot.docs.some((doc) => doc.id === parent.id);
+  
+      if (alreadyLinked) {
+        // ❌ Unlink Parent
+        await deleteDoc(linkedParentRef); // Remove from student's `LinkedParent`
+        await deleteDoc(linkedStudentRef); // Remove from parent's `LinkedStudent`
+  
+        setLinkedParents((prev) => prev.filter((p) => p.id !== parent.id));
+        Toast.show({ type: 'info', text1: 'Parent Unlinked' });
+      } else {
+        // ✅ Link Parent
+        await setDoc(linkedParentRef, {
+          username: parent.username,
+          email: parent.email,
+          contactNumber: parent.contactNumber || 'N/A',
+          uid: parent.id, 
+        });
+  
+        // ✅ Link Student inside Parent's `LinkedStudent` (now storing studentUid)
+        await setDoc(linkedStudentRef, {
+          username: studentData.username,
+          course: studentData.course,
+          idNumber: studentData.idNumber,
+          yearLevel: studentData.yearLevel,
+          studentUid: studentData.uid, // 🔹 Store student's UID
+        });
+  
+        setLinkedParents((prev) => [...prev, parent]);
+        Toast.show({ type: 'success', text1: 'Parent Linked Successfully' });
+      }
+    } catch (error) {
+      console.error('❌ Error updating linked parent:', error);
+      Toast.show({ type: 'error', text1: 'Error linking parent' });
     }
+  };
 
-    // Add the parent's UID to the student document
-    await updateDoc(studentDocRef, {
-      parentUid: parentUid, // Add the parent UID to the student's record
-    });
-
-    // Provide feedback to the user
-    Toast.show({
-      type: 'success',
-      text1: isAdded ? 'Parent Unlinked' : 'Parent Linked Successfully',
-    });
-  } catch (error) {
-    console.error('Error updating student with parent:', error);
-    Toast.show({
-      type: 'error',
-      text1: error.message || 'Error linking parent to student',
-    });
-  }
-};
-
-
-
-  // Get logged-in student's UID from Firebase Auth
-  const auth = getAuth();
-  const idNumber = auth.currentUser ? auth.currentUser.uid : ''; // Get student ID number (uid)
 
   return (
     <>
-      {/* 🏁 Wrap entire UI in FlatList */}
+      {/* 🏁 FlatList for UI */}
       <FlatList
         data={searchResults}
         keyExtractor={(item) => item.id}
-        keyboardShouldPersistTaps="handled" // Allows clicking items while keyboard is open
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <>
             {/* 🔹 Navigation Bar */}
@@ -131,32 +137,34 @@ const toggleIcon = async (parentUid) => {
                 placeholder="Search Parent Username"
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                onSubmitEditing={searchParent} // Search when user presses enter
+                onSubmitEditing={searchParent}
                 autoCapitalize="none"
               />
             </View>
           </>
         }
-        renderItem={({ item }) => (
-          <View style={styles.messagecontainer}>
-            <TouchableOpacity onPress={() => navigation.navigate('ChatPage')}>
-              <View style={styles.chatbar} />
-              <Text style={styles.chatname}>{item.username}</Text>
-              <View style={styles.chatcircle}>
-                <Image source={require('../images/account_circle.png')} style={styles.chatIcon} />
-                <TouchableOpacity onPress={() => toggleIcon(item.id, idNumber)}>
-                  <Image
-                    source={isAdded ? require('../images/checked.png') : require('../images/add.png')}
-                    style={styles.addicon}
-                  />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </View>
-        )}
-        ListEmptyComponent={() => (
-          <Text style={styles.noResults}>No results found</Text>
-        )}
+        renderItem={({ item }) => {
+          const isLinked = linkedParents.some(p => p.id === item.id);
+          return (
+            <View style={styles.messagecontainer}>
+              <TouchableOpacity onPress={() => navigation.navigate('ChatPage')}>
+                <View style={styles.chatbar} />
+                <Text style={styles.chatname}>{item.username}</Text>
+                <View style={styles.chatcircle}>
+                  <Image source={require('../images/account_circle.png')} style={styles.chatIcon} />
+                  {isLinked ? (
+                    <Image source={require('../images/checked.png')} style={styles.addicon} />
+                  ) : (
+                    <TouchableOpacity onPress={() => toggleParentLink(item)}>
+                      <Image source={require('../images/add.png')} style={styles.addicon} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
+          );
+        }}
+        ListEmptyComponent={() => <Text style={styles.noResults}>No results found</Text>}
       />
 
       {/* Toast Component */}

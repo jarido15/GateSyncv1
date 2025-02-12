@@ -1,38 +1,36 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { auth, db } from './firebase'; // Import Firebase instance
+import { auth, db } from './firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { collection, addDoc } from 'firebase/firestore';
+import { setDoc, doc } from 'firebase/firestore';
 
 const ParentSignup = ({ navigation }) => {
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [contactNumber, setContactNumber] = useState('');
 
     const handleSignup = async () => {
-        // Simple validation
-        if (!username || !email || !password) {
+        if (!username || !email || !password || !contactNumber) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
 
         try {
-            // Create user in Firebase Authentication
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // Add user data to Firestore under 'parent' collection
-            await addDoc(collection(db, 'parent'), {
-                username: username,
-                email: email,
-                uid: user.uid, // Store the Firebase user ID
+            // Store user data in Firestore using the UID as the document ID
+            await setDoc(doc(db, 'parent', user.uid), {
+                username,
+                email,
+                contactNumber,
+                uid: user.uid, // Store UID
                 createdAt: new Date().toISOString(),
             });
 
             Alert.alert('Success', `Welcome, ${username}!`);
-
-            // Optionally navigate to the Login screen after successful signup
             navigation.navigate('ParentLogin');
         } catch (error) {
             Alert.alert('Signup Failed', error.message);
@@ -43,26 +41,14 @@ const ParentSignup = ({ navigation }) => {
     return (
         <View style={styles.container}>
             <View style={styles.bluecircle} />
-            <LinearGradient
-                colors={['#5cb8ff', '#6b9bfa']}
-                style={styles.bluecircle2}
-            />
+            <LinearGradient colors={['#5cb8ff', '#6b9bfa']} style={styles.bluecircle2} />
             <Text style={styles.heading}>Parent</Text>
             <Text style={styles.heading}>Sign Up</Text>
 
-            <Image
-                source={require('../images/facescanner.png')}
-                style={styles.facescanner}
-            />
-            <Image
-                source={require('../images/arrows.png')}
-                style={styles.arrows1}
-            />
+            <Image source={require('../images/facescanner.png')} style={styles.facescanner} />
+            <Image source={require('../images/arrows.png')} style={styles.arrows1} />
             <TouchableOpacity onPress={() => navigation.navigate('ParentLogin')}>
-                <Image
-                    source={require('../images/arrow_back.png')}
-                    style={styles.arrow}
-                />
+                <Image source={require('../images/arrow_back.png')} style={styles.arrow} />
             </TouchableOpacity>
 
             <View style={styles.inputContainer}>
@@ -82,6 +68,16 @@ const ParentSignup = ({ navigation }) => {
                     value={email}
                     onChangeText={setEmail}
                     keyboardType="email-address"
+                    placeholderTextColor={'#686D76'}
+                />
+
+                <Text style={styles.label}>Contact Number</Text>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Enter Contact Number"
+                    value={contactNumber}
+                    onChangeText={(text) => setContactNumber(text.replace(/[^0-9]/g, ''))} // Allow only numbers
+                    keyboardType="numeric"
                     placeholderTextColor={'#686D76'}
                 />
 
@@ -157,7 +153,7 @@ const styles = StyleSheet.create({
     },
     inputContainer: {
         width: '100%',
-        height: 410,
+        height: 480, // Increased height to fit new input
         bottom: 680,
         backgroundColor: '#ffffff',
         borderRadius: 15,
@@ -198,20 +194,6 @@ const styles = StyleSheet.create({
         color: '#fff',
         top: 8,
         fontWeight: 'bold',
-    },
-    haveacc: {
-        color: 'black',
-        fontSize: 16,
-        fontWeight: '400',
-        top: -725,
-    },
-    registerLink: {
-        marginTop: 10,
-    },
-    registerText: {
-        color: '#ACC7E0',
-        fontSize: 16,
-        top: -730,
     },
 });
 
