@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert } from 'react-native';
+import { auth } from './firebase'; // Assuming firebase is initialized in this file
+import { db } from './firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const EmergencyScreen = ({ navigation }) => {
   const [selectedReason, setSelectedReason] = useState('');
@@ -7,7 +10,7 @@ const EmergencyScreen = ({ navigation }) => {
 
   const reasons = ['Medical Emergency', 'Family Emergency', 'No Class', 'Other'];
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedReason) {
       Alert.alert('Error', 'Please select a reason.');
       return;
@@ -20,9 +23,30 @@ const EmergencyScreen = ({ navigation }) => {
       return;
     }
 
-    Alert.alert('Success', `Submitted Reason: ${reason}`);
-    console.log('Submitted Reason:', reason);
-    // Add submission logic here
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const studentUid = user.uid; // Get the UID of the logged-in student
+
+        const emergencyData = {
+          reason: reason,
+          timestamp: serverTimestamp(),
+          status: 'Pending', // Set status to 'Pending'
+          studentUid: studentUid,
+        };
+
+        // Use setDoc to ensure the document UID matches the student's UID
+        await setDoc(doc(db, 'Emergency', studentUid), emergencyData);
+
+        Alert.alert('Success', `Submitted Reason: ${reason}`);
+        console.log('Submitted Reason:', reason);
+      } else {
+        Alert.alert('Error', 'No user is logged in.');
+      }
+    } catch (error) {
+      console.error('Error saving emergency:', error);
+      Alert.alert('Error', 'Failed to submit the emergency reason.');
+    }
   };
 
   return (
