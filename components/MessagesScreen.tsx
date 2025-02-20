@@ -17,48 +17,53 @@ const MessageScreen = ({ navigation }) => {
       try {
         const currentUser = getAuth().currentUser;
         if (!currentUser) return;
-
+  
         const { uid } = currentUser;  // Get the logged-in user's UID
-
+  
         // Fetch all parents from the parent collection
         const parentsRef = collection(db, 'parent');
         const parentsSnapshot = await getDocs(parentsRef);
-
+  
         let linkedParents = [];
-
+        const parentIds = new Set();  // Set to track unique parent IDs
+  
         // Check each parent if they're linked to the logged-in student
         for (const parentDoc of parentsSnapshot.docs) {
           const parentData = parentDoc.data();
           if (!parentData) continue; // Skip if there's no data
-
+  
           // Query the LinkedParent subcollection for the student to find matching uid
           const studentsRef = collection(db, 'students');
           const studentsSnapshot = await getDocs(studentsRef);
-
+  
           for (const studentDoc of studentsSnapshot.docs) {
             const studentId = studentDoc.id;
-
+  
             // Query the LinkedParent subcollection for each student to check if this parent is linked
             const linkedParentRef = query(
               collection(db, 'students', studentId, 'LinkedParent'),
               where('uid', '==', parentData.uid) // Match parent uid with the student
             );
-
+  
             const linkedParentSnapshot = await getDocs(linkedParentRef);
-
-            // If this parent is linked to any student, add to the chatUsers array
+  
+            // If this parent is linked to any student and not already added, add to the linkedParents array
             linkedParentSnapshot.forEach((parentLinkedDoc) => {
               if (parentLinkedDoc.exists()) {
-                linkedParents.push({
-                  id: parentDoc.id || '', // Safely access the id
-                  username: parentData.username || 'Unknown Parent', // Handle missing name
-                  ...parentData,
-                });
+                // Ensure the parent is not added multiple times
+                if (!parentIds.has(parentDoc.id)) {
+                  parentIds.add(parentDoc.id);
+                  linkedParents.push({
+                    id: parentDoc.id || '', // Safely access the id
+                    username: parentData.username || 'Unknown Parent', // Handle missing name
+                    ...parentData,
+                  });
+                }
               }
             });
           }
         }
-
+  
         // Set the filtered linked parents (users)
         setChatUsers(linkedParents);
         setLoading(false); // Set loading to false after data is fetched
@@ -67,10 +72,10 @@ const MessageScreen = ({ navigation }) => {
         setLoading(false);
       }
     };
-
+  
     fetchUsers();
   }, []);
-
+  
   // Real-time listener for messages
   useEffect(() => {
     const unsubscribeMessages = chatUsers.map((user) => {
