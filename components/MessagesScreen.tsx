@@ -163,9 +163,10 @@ const MessageScreen = ({ navigation }) => {
                     <Text style={styles.parentName}>{user.username}</Text>
                     {/* Display the latest message for each chat */}
                     <Text style={styles.latestMessage}>
-                      {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
-                        messages[`${user.id}_${getAuth().currentUser.uid}`][0]?.text}
-                    </Text>
+  {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
+    messages[`${user.id}_${getAuth().currentUser.uid}`].slice(-1)[0]?.text}
+</Text>
+
                   </View>
                 </TouchableOpacity>
               ))
@@ -256,6 +257,18 @@ const styles = StyleSheet.create({
     height: 30,
     resizeMode: 'contain',
   },
+  latestMessage: {
+    fontSize: 14,
+    color: '#555', // Soft gray for readability
+    fontStyle: 'italic', // Make it italic to differentiate
+    marginTop: 4,
+    backgroundColor: '#E3F2FD', // Light blue background
+    padding: 5,
+    borderRadius: 5,
+    overflow: 'hidden',
+    maxWidth: '90%', // Prevents overflow
+  },
+  
   welcomeText: {
     fontSize: 36,
     fontWeight: '800',

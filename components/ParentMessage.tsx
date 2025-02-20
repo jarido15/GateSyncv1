@@ -9,7 +9,6 @@ const MessageScreen = ({ navigation }) => {
   const [chatUsers, setChatUsers] = useState([]); // Store users who are linked to the logged-in parent
   const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState({}); // Store messages for each user
-  const [newMessage, setNewMessage] = useState(''); // Store new message input
   const slideAnim = useRef(new Animated.Value(-400)).current;
 
   useEffect(() => {
@@ -20,61 +19,54 @@ const MessageScreen = ({ navigation }) => {
 
         const { uid } = currentUser; // Get the logged-in user's UID
 
-        // Fetch the parents for the logged-in user (i.e., get the student's linked parent)
-        const parentsRef = collection(db, 'parent');
-        const parentsSnapshot = await getDocs(parentsRef);
+        // Query to find the logged-in parent
+        const parentQuery = query(collection(db, 'parent'), where('uid', '==', uid));
+        const parentSnapshot = await getDocs(parentQuery);
 
-        let linkedStudents = []; // Initialize the array to hold linked students
-
-        // Loop through each parent and check for linked students
-        for (const parentDoc of parentsSnapshot.docs) {
-          const parentId = parentDoc.id;
-
-          // Query LinkedStudent subcollection for the parent document
-          const linkedStudentRef = query(
-            collection(db, 'parent', parentId, 'LinkedStudent')
-          );
-
-          const linkedStudentSnapshot = await getDocs(linkedStudentRef);
-
-          // Fetch student data for each LinkedStudent document
-          const linkedPromises = linkedStudentSnapshot.docs.map(async (linkedDoc) => {
-            if (linkedDoc.exists()) {
-              const studentUid = linkedDoc.data()?.uid; // Use optional chaining here
-              if (!studentUid) {
-                console.error("Student UID is missing.");
-                return null; // Skip if UID is missing
-              }
-
-              // Now query the 'students' collection to find a student whose UID matches the LinkedStudent's UID
-              const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
-              const studentSnapshot = await getDocs(studentQuery);
-
-              // If student data exists
-              if (!studentSnapshot.empty) {
-                const studentDoc = studentSnapshot.docs[0];
-                const studentData = studentDoc.data();
-                return {
-                  id: studentDoc.id, // Keep the document ID for possible later use
-                  uid: studentData?.uid, // Use the uid for chatId generation
-                  username: studentData?.username || 'Unknown Student', // Default value if username is missing
-                  ...studentData,
-                };
-              } else {
-                console.error(`No student found for UID: ${studentUid}`);
-                return null; // Skip if no student document found
-              }
-            }
-            return null; // Skip if LinkedStudent document doesn't exist
-          });
-
-          // Wait for all linked student data to be fetched
-          const students = await Promise.all(linkedPromises);
-          linkedStudents = [...linkedStudents, ...students.filter(Boolean)]; // Filter out any nulls
+        if (parentSnapshot.empty) {
+          console.warn('No parent found for the logged-in user.');
+          setLoading(false);
+          return;
         }
 
-        setChatUsers(linkedStudents); // Set the chatUsers state
-        setLoading(false); // Set loading to false once data is fetched
+        let linkedStudents = []; // Store unique linked students
+
+        for (const parentDoc of parentSnapshot.docs) {
+          const parentId = parentDoc.id;
+
+          // Query LinkedStudent subcollection for the logged-in parent
+          const linkedStudentRef = collection(db, 'parent', parentId, 'LinkedStudent');
+          const linkedStudentSnapshot = await getDocs(linkedStudentRef);
+
+          for (const linkedDoc of linkedStudentSnapshot.docs) {
+            if (!linkedDoc.exists()) continue;
+
+            const studentUid = linkedDoc.data()?.uid;
+            if (!studentUid) continue; // Skip if UID is missing
+
+            // Check if the student is already in the array to prevent duplicates
+            if (linkedStudents.some(student => student.uid === studentUid)) continue;
+
+            // Query the 'students' collection to get student details
+            const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
+            const studentSnapshot = await getDocs(studentQuery);
+
+            if (!studentSnapshot.empty) {
+              const studentDoc = studentSnapshot.docs[0];
+              const studentData = studentDoc.data();
+
+              linkedStudents.push({
+                id: studentDoc.id,
+                uid: studentData?.uid,
+                username: studentData?.username || 'Unknown Student',
+                ...studentData,
+              });
+            }
+          }
+        }
+
+        setChatUsers(linkedStudents); // Set the chat users state
+        setLoading(false);
       } catch (error) {
         console.error('Error fetching users:', error);
         setLoading(false);
@@ -136,28 +128,6 @@ const MessageScreen = ({ navigation }) => {
     navigation.navigate(page); // Navigate to the selected page
   };
 
-  // Send message function
-  // const sendMessage = async (user) => {
-  //   if (newMessage.trim() === '') return;
-
-  //   const currentUser = getAuth().currentUser;
-  //   const currentUserId = currentUser?.uid;
-  //   if (!currentUserId || !user?.uid) return;
-
-  //   // Generate chatId using UID instead of document ID
-  //   const chatId = [currentUserId, user.uid].sort().join('_');
-  //   const messagesRef = collection(db, 'Chats', chatId, 'Messages');
-
-  //   // Send the message with senderId and receiverId
-  //   await addDoc(messagesRef, {
-  //     text: newMessage,
-  //     senderId: currentUserId,
-  //     receiverId: user.uid,  // Ensure this is correctly set from LinkedStudent
-  //     timestamp: serverTimestamp(),
-  //   });
-
-  //   setNewMessage(''); // Clear input field after sending
-  // };
   return (
     <>
       <ScrollView style={styles.container}>
@@ -200,7 +170,7 @@ const MessageScreen = ({ navigation }) => {
                     {/* Display the latest message for each chat */}
                     <Text style={styles.latestMessage}>
                       {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
-                        messages[`${user.id}_${getAuth().currentUser.uid}`][0]?.text}
+                        messages[`${user.id}_${getAuth().currentUser.uid}`].slice(-1)[0]?.text}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -285,6 +255,17 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     resizeMode: 'contain',
+  },
+  latestMessage: {
+    fontSize: 14,
+    color: '#555', // Soft gray for readability
+    fontStyle: 'italic', // Make it italic to differentiate
+    marginTop: 4,
+    backgroundColor: '#E3F2FD', // Light blue background
+    padding: 5,
+    borderRadius: 5,
+    overflow: 'hidden',
+    maxWidth: '90%', // Prevents overflow
   },
   welcomeText: {
     fontSize: 36,

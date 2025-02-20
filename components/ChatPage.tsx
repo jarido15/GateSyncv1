@@ -100,9 +100,8 @@ const ChatPage = ({ navigation, route }) => {
       </View>
     );
   };
-  
-  
-  
+
+
   const styles = StyleSheet.create({
     container: {
       flex: 1,
@@ -190,6 +189,5 @@ const ChatPage = ({ navigation, route }) => {
       backgroundColor: '#E1E1E1',
     },
   });
-  
+
   export default ChatPage;
-  
