@@ -1,64 +1,118 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation for navigation
-import { getFirestore, doc, getDoc, collection, getDocs } from 'firebase/firestore';
+import React, { useRef, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar, TextInput } from 'react-native';
 import { getAuth } from 'firebase/auth';
-import LinearGradient from 'react-native-linear-gradient';
+import { db } from '../components/firebase'; // Firebase config
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 
-const MessageScreen = () => {
-  const [menuVisible, setMenuVisible] = useState(false); // State to control menu modal visibility
-  const [studentName, setStudentName] = useState([]); // State for student's name (now an array)
-  const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
-  const navigation = useNavigation(); // Access the navigation prop
-  const auth = getAuth(); // Firebase auth
-  const db = getFirestore(); // Firebase Firestore
+const MessageScreen = ({ navigation }) => {
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [chatUsers, setChatUsers] = useState([]); // Store users who are linked to the logged-in parent
+  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState({}); // Store messages for each user
+  const [newMessage, setNewMessage] = useState(''); // Store new message input
+  const slideAnim = useRef(new Animated.Value(-400)).current;
 
   useEffect(() => {
-    const fetchLinkedStudents = async () => {
-      const user = auth.currentUser; // Get the current logged-in user
-      if (user) {
-        const parentDocRef = doc(db, 'parent', user.uid); // Reference to the parent document
-        const parentDocSnap = await getDoc(parentDocRef);
-    
-        if (parentDocSnap.exists()) {
-          // Access the 'LinkedStudent' subcollection inside the parent document
-          const linkedStudentsRef = collection(parentDocRef, 'LinkedStudent'); // Updated subcollection name
-          const linkedStudentsSnap = await getDocs(linkedStudentsRef);
-    
-          if (!linkedStudentsSnap.empty) {
-            const studentUsernames = linkedStudentsSnap.docs.map((doc) => {
-              // Log the entire document to check its structure
-              console.log('Student Document Data:', doc.data());
-    
-              const studentData = doc.data();
-              // Check if 'username' exists in the data
-              if (studentData && studentData.username) {
-                console.log('Fetched Username:', studentData.username); // Log username if it exists
-                return studentData.username; // Return username if it exists
-              } else {
-                console.log('No username found for this student:', doc.id);
-                return null;
+    const fetchUsers = async () => {
+      try {
+        const currentUser = getAuth().currentUser;
+        if (!currentUser) return;
+
+        const { uid } = currentUser; // Get the logged-in user's UID
+
+        // Fetch the parents for the logged-in user (i.e., get the student's linked parent)
+        const parentsRef = collection(db, 'parent');
+        const parentsSnapshot = await getDocs(parentsRef);
+
+        let linkedStudents = []; // Initialize the array to hold linked students
+
+        // Loop through each parent and check for linked students
+        for (const parentDoc of parentsSnapshot.docs) {
+          const parentId = parentDoc.id;
+
+          // Query LinkedStudent subcollection for the parent document
+          const linkedStudentRef = query(
+            collection(db, 'parent', parentId, 'LinkedStudent')
+          );
+
+          const linkedStudentSnapshot = await getDocs(linkedStudentRef);
+
+          // Fetch student data for each LinkedStudent document
+          const linkedPromises = linkedStudentSnapshot.docs.map(async (linkedDoc) => {
+            if (linkedDoc.exists()) {
+              const studentUid = linkedDoc.data()?.uid; // Use optional chaining here
+              if (!studentUid) {
+                console.error("Student UID is missing.");
+                return null; // Skip if UID is missing
               }
-            }).filter((username) => username !== null); // Filter out null values if no username exists
-    
-            if (studentUsernames.length > 0) {
-              setStudentName(studentUsernames); // Set the list of student usernames
-            } else {
-              console.log('No valid usernames found in linked students');
+
+              // Now query the 'students' collection to find a student whose UID matches the LinkedStudent's UID
+              const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
+              const studentSnapshot = await getDocs(studentQuery);
+
+              // If student data exists
+              if (!studentSnapshot.empty) {
+                const studentDoc = studentSnapshot.docs[0];
+                const studentData = studentDoc.data();
+                return {
+                  id: studentDoc.id, // Keep the document ID for possible later use
+                  uid: studentData?.uid, // Use the uid for chatId generation
+                  username: studentData?.username || 'Unknown Student', // Default value if username is missing
+                  ...studentData,
+                };
+              } else {
+                console.error(`No student found for UID: ${studentUid}`);
+                return null; // Skip if no student document found
+              }
             }
-          } else {
-            console.log('No linked students found');
-          }
-        } else {
-          console.log('Parent document not found');
+            return null; // Skip if LinkedStudent document doesn't exist
+          });
+
+          // Wait for all linked student data to be fetched
+          const students = await Promise.all(linkedPromises);
+          linkedStudents = [...linkedStudents, ...students.filter(Boolean)]; // Filter out any nulls
         }
+
+        setChatUsers(linkedStudents); // Set the chatUsers state
+        setLoading(false); // Set loading to false once data is fetched
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setLoading(false);
       }
     };
-    
-  
-    fetchLinkedStudents();
+
+    fetchUsers();
   }, []);
-  
+
+  // Listen for new messages for each chat user
+  useEffect(() => {
+    const unsubscribeMessages = chatUsers.map((user) => {
+      const currentUser = getAuth().currentUser;
+      const currentUserId = currentUser?.uid;
+
+      if (!currentUserId || !user.uid) return;
+
+      const chatId = [currentUserId, user.uid].sort().join('_');
+      const messagesRef = collection(db, 'Chats', chatId, 'Messages');
+      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+      return onSnapshot(q, (querySnapshot) => {
+        const newMessages = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setMessages((prevMessages) => ({
+          ...prevMessages,
+          [chatId]: newMessages, // Store messages for each user by chatId
+        }));
+      });
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      unsubscribeMessages.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [chatUsers]);
 
   const openMenu = () => {
     setMenuVisible(true); // Show the modal
@@ -82,11 +136,33 @@ const MessageScreen = () => {
     navigation.navigate(page); // Navigate to the selected page
   };
 
+  // Send message function
+  // const sendMessage = async (user) => {
+  //   if (newMessage.trim() === '') return;
+
+  //   const currentUser = getAuth().currentUser;
+  //   const currentUserId = currentUser?.uid;
+  //   if (!currentUserId || !user?.uid) return;
+
+  //   // Generate chatId using UID instead of document ID
+  //   const chatId = [currentUserId, user.uid].sort().join('_');
+  //   const messagesRef = collection(db, 'Chats', chatId, 'Messages');
+
+  //   // Send the message with senderId and receiverId
+  //   await addDoc(messagesRef, {
+  //     text: newMessage,
+  //     senderId: currentUserId,
+  //     receiverId: user.uid,  // Ensure this is correctly set from LinkedStudent
+  //     timestamp: serverTimestamp(),
+  //   });
+
+  //   setNewMessage(''); // Clear input field after sending
+  // };
   return (
     <>
-      {/* Main ScrollView */}
       <ScrollView style={styles.container}>
         <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+
         {/* Navigation Bar */}
         <View style={styles.navbar}>
           <TouchableOpacity onPress={openMenu}>
@@ -104,59 +180,60 @@ const MessageScreen = () => {
           </View>
         </View>
 
-        {/* Message container */}
-        <View style={styles.messagecontainer}>
-          <TouchableOpacity onPress={() => navigation.navigate('ParentChatPage')}>
-            <View style={styles.chatbar} />
-            {studentName && studentName.length > 0 ? (
-              studentName.map((username, index) => (
-                <Text key={index} style={styles.chatname}>
-                  {username}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.chatname}>No Linked Students</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-        <View style={styles.chatcircle}>
-          <Image
-            source={require('../images/account_circle.png')}
-            style={styles.chatIcon}
-          />
-        </View>
-
         <View style={styles.content}>
           <Text style={styles.welcomeText}>Messages</Text>
         </View>
+
+        {/* Chat Users Display */}
+        {loading ? (
+          <Text style={styles.loadingText}>Loading...</Text>
+        ) : (
+          <View style={styles.parentListContainer}>
+            {chatUsers.length > 0 ? (
+              chatUsers.map((user, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => navigation.navigate('ParentChatPage', { user: user })}
+                >
+                  <View style={styles.parentItem}>
+                    <Text style={styles.parentName}>{user.username}</Text>
+                    {/* Display the latest message for each chat */}
+                    <Text style={styles.latestMessage}>
+                      {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
+                        messages[`${user.id}_${getAuth().currentUser.uid}`][0]?.text}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.noParentsText}>No users found.</Text>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal for sliding menu */}
       <Modal
         visible={menuVisible}
-        animationType="none" // Disable default animation
+        animationType="none"
         transparent={true}
-        onRequestClose={closeMenu} // Handle back button press
+        onRequestClose={closeMenu}
       >
         <View style={styles.modalContainer}>
-          {/* Overlay for dismissing the modal */}
           <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
-
-          {/* Animated sliding menu */}
-          <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]}>
+          <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]} >
             <View style={styles.menu}>
-              {/* Close button */}
               <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}> X </Text>
               </TouchableOpacity>
 
               {/* Menu Options */}
-              <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
-                <Text style={styles.menuOptionText}>Linked Children</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
-                <Text style={styles.menuOptionText}>Settings</Text>
-              </TouchableOpacity>
+               <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
+                              <Text style={styles.menuOptionText}>Linked Children</Text>
+                            </TouchableOpacity>
+               <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
+                              <Text style={styles.menuOptionText}>Settings</Text>
+                            </TouchableOpacity>
               <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Logout</Text>
               </TouchableOpacity>
@@ -190,106 +267,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  messagecontainer: {
-    backgroundColor: '#CFE5FF',
-    width: '90%',
-    height: 206,
-    alignSelf: 'center',
-    top: '17%',
-    borderRadius: 21,
-    shadowColor: 'black',
-    shadowOffset: { width: 4, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   logo: {
     width: 35,
     height: 34,
     resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    right: 100,
     elevation: 5,
-    left: '-60%',
   },
   gatesync: {
     width: 100,
     height: 34,
-    top: 5,
     resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    right: 100,
     elevation: 5,
-    left: '-60%',
   },
   menuIcon: {
     width: 30,
     height: 30,
     resizeMode: 'contain',
   },
-  navbarText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  profileIcon: {
-    width: 30,
-    height: 30,
-    resizeMode: 'contain',
-  },
-  content: {
-    marginTop: 20,
-    padding: 20,
-  },
   welcomeText: {
     fontSize: 36,
     fontWeight: '800',
-    fontFamily: 'Kanit-SemiBold',
     color: '#5394F2',
-    top: -295,
-  },
-  chatIcon: {
-    width: 70,
-    height: 70,
-    top: -5,
-    right: 5,
-  },
-  chatcircle: {
-    backgroundColor: '#fff',
-    width: 60,
-    height: 60,
-    borderRadius: 50,
-    top: -105,
-    right: -30,
-  },
-  chatname: {
-    fontFamily: 'Kanit-SemiBold',
-    fontSize: 20,
-    color: '#404B7C',
-    right: -80,
-    fontWeight: '800',
-    textAlign: 'auto',
-    top: -30,
-  },
-  chatbar: {
-    backgroundColor: '#CFE5FF',
-    width: '100%',
-    height: 75,
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-    borderRightColor: '#CFE5FF',
-    borderLeftColor: '#CFE5FF',
-    borderTopColor: '#fFF',
-    borderBottomColor: '#fFF',
-    alignSelf: 'center',
-    alignContent: 'center',
-    top: '20%',
+    marginTop: 20,
   },
   modalContainer: {
     flex: 1,
@@ -336,6 +337,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
+  },
+  parentItem: {
+    backgroundColor: '#CFE5FF',
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 10,
+    elevation: 2,
+  },
+  parentName: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  parentListContainer: {
+    paddingHorizontal: 15,
+    marginTop: 20,
+  },
+  noParentsText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 

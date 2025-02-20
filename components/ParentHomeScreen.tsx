@@ -75,12 +75,12 @@ const ParentHomeScreen = ({ navigation }) => {
       // Loop through linked students and fetch schedules
       for (const studentDoc of linkedStudentSnapshot.docs) {
         const studentData = studentDoc.data();
-        const studentUid = studentData.studentUid;
+        const uid = studentData.uid;
 
         // Query schedules where studentUid matches
         const scheduleQuery = query(
           collection(db, 'schedules'),
-          where('studentUid', '==', studentUid)
+          where('uid', '==', uid)
         );
         const scheduleSnapshot = await getDocs(scheduleQuery);
 

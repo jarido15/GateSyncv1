@@ -96,7 +96,7 @@ const LinkedParent = ({ navigation }) => {
           course: studentData.course,
           idNumber: studentData.idNumber,
           yearLevel: studentData.yearLevel,
-          studentUid: studentData.uid, // 🔹 Store student's UID
+          uid: studentData.uid, // 🔹 Store student's UID
         });
   
         setLinkedParents((prev) => [...prev, parent]);

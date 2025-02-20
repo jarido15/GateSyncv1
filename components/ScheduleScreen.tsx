@@ -19,10 +19,10 @@ const ScheduleScreen = ({ navigation }) => {
       try {
         const user = auth.currentUser;
         if (user) {
-          const studentUid = user.uid;
+          const uid = user.uid;
 
           // Fetch all schedules for the student
-          const schedulesQuery = query(collection(db, 'schedules'), where('studentUid', '==', studentUid));
+          const schedulesQuery = query(collection(db, 'schedules'), where('uid', '==', uid));
           const querySnapshot = await getDocs(schedulesQuery);
           const schedulesList = querySnapshot.docs.map(doc => doc.data());
           setUserSchedules(schedulesList);
@@ -51,19 +51,19 @@ const ScheduleScreen = ({ navigation }) => {
     try {
       const user = auth.currentUser;
       if (user) {
-        const studentUid = user.uid;
-
+        const uid = user.uid; // Now using 'uid' instead of 'studentUid'
+  
         const scheduleData = {
           date: selectedDate,
           timeIn: timeIn.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timeOut: timeOut.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: serverTimestamp(),
-          studentUid: studentUid,
+          uid: uid, // Updated field name
         };
-
-        const scheduleDocRef = doc(db, 'schedules', studentUid);
+  
+        const scheduleDocRef = doc(db, 'schedules', uid);
         await setDoc(scheduleDocRef, scheduleData, { merge: true });
-
+  
         Alert.alert('Success', 'Schedule saved successfully.');
       } else {
         Alert.alert('Error', 'No user is logged in.');
@@ -73,7 +73,7 @@ const ScheduleScreen = ({ navigation }) => {
       Alert.alert('Error', 'Failed to save schedule.');
     }
   };
-
+  
   const renderHeader = () => (
     <View style={styles.container}>
       <View style={styles.navbar}>

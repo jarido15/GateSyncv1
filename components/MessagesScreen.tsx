@@ -1,15 +1,110 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
+import { getAuth } from 'firebase/auth';
+import { db } from '../components/firebase'; // Assuming you've already set up the Firebase config
+import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+
 
 const MessageScreen = ({ navigation }) => {
-  const [menuVisible, setMenuVisible] = useState(false); // State to control menu modal visibility
-  const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [chatUsers, setChatUsers] = useState([]);
+  const [loading, setLoading] = useState(true); // Add loading state
+  const [messages, setMessages] = useState({}); // Store messages by chatId
+  const slideAnim = useRef(new Animated.Value(-400)).current;
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const currentUser = getAuth().currentUser;
+        if (!currentUser) return;
+
+        const { uid } = currentUser;  // Get the logged-in user's UID
+
+        // Fetch all parents from the parent collection
+        const parentsRef = collection(db, 'parent');
+        const parentsSnapshot = await getDocs(parentsRef);
+
+        let linkedParents = [];
+
+        // Check each parent if they're linked to the logged-in student
+        for (const parentDoc of parentsSnapshot.docs) {
+          const parentData = parentDoc.data();
+          if (!parentData) continue; // Skip if there's no data
+
+          // Query the LinkedParent subcollection for the student to find matching uid
+          const studentsRef = collection(db, 'students');
+          const studentsSnapshot = await getDocs(studentsRef);
+
+          for (const studentDoc of studentsSnapshot.docs) {
+            const studentId = studentDoc.id;
+
+            // Query the LinkedParent subcollection for each student to check if this parent is linked
+            const linkedParentRef = query(
+              collection(db, 'students', studentId, 'LinkedParent'),
+              where('uid', '==', parentData.uid) // Match parent uid with the student
+            );
+
+            const linkedParentSnapshot = await getDocs(linkedParentRef);
+
+            // If this parent is linked to any student, add to the chatUsers array
+            linkedParentSnapshot.forEach((parentLinkedDoc) => {
+              if (parentLinkedDoc.exists()) {
+                linkedParents.push({
+                  id: parentDoc.id || '', // Safely access the id
+                  username: parentData.username || 'Unknown Parent', // Handle missing name
+                  ...parentData,
+                });
+              }
+            });
+          }
+        }
+
+        // Set the filtered linked parents (users)
+        setChatUsers(linkedParents);
+        setLoading(false); // Set loading to false after data is fetched
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        setLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, []);
+
+  // Real-time listener for messages
+  useEffect(() => {
+    const unsubscribeMessages = chatUsers.map((user) => {
+      const currentUser = getAuth().currentUser;
+      const currentUserId = currentUser?.uid;
+
+      if (!currentUserId || !user.id) return;
+
+      const chatId = currentUserId < user.id ? `${currentUserId}_${user.id}` : `${user.id}_${currentUserId}`;
+      const messagesRef = collection(db, 'Chats', chatId, 'Messages');
+      const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+      return onSnapshot(q, (querySnapshot) => {
+        const newMessages = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setMessages((prevMessages) => ({
+          ...prevMessages,
+          [chatId]: newMessages, // Store messages for each user by chatId
+        }));
+      });
+    });
+
+    // Cleanup on component unmount
+    return () => {
+      unsubscribeMessages.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [chatUsers]);
 
   const openMenu = () => {
-    setMenuVisible(true); // Show the modal
+    setMenuVisible(true);
     Animated.timing(slideAnim, {
-      toValue: 0, // Slide into the screen from the left
+      toValue: 0,
       duration: 300,
       useNativeDriver: true,
     }).start();
@@ -17,22 +112,21 @@ const MessageScreen = ({ navigation }) => {
 
   const closeMenu = () => {
     Animated.timing(slideAnim, {
-      toValue: -400, // Slide back off-screen to the left
+      toValue: -400,
       duration: 300,
       useNativeDriver: true,
-    }).start(() => setMenuVisible(false)); // Hide modal after animation
+    }).start(() => setMenuVisible(false));
   };
 
   const navigateToPage = (page) => {
-    setMenuVisible(false); // Close the menu
-    navigation.navigate(page); // Navigate to the selected page
+    navigation.navigate(page); // Correct navigation function
   };
 
   return (
     <>
-      {/* Main ScrollView */}
       <ScrollView style={styles.container}>
-      <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+        <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+
         {/* Navigation Bar */}
         <View style={styles.navbar}>
           <TouchableOpacity onPress={openMenu}>
@@ -50,41 +144,49 @@ const MessageScreen = ({ navigation }) => {
           </View>
         </View>
 
-
-        {/* Message container */}
-        <View style={styles.messagecontainer}>
-          <TouchableOpacity onPress={() => navigation.navigate('ChatPage')}>
-            <View style={styles.chatbar}/>
-            <Text style={styles.chatname}>John Padilla</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.chatcircle}>
-              <Image
-                source={require('../images/account_circle.png')}
-                style={styles.chatIcon}
-              />
-            </View>
-
         <View style={styles.content}>
           <Text style={styles.welcomeText}>Messages</Text>
         </View>
+
+        {/* Chat Users Display */}
+        {loading ? (
+          <Text style={styles.loadingText}>Loading...</Text>
+        ) : (
+          <View style={styles.parentListContainer}>
+            {chatUsers.length > 0 ? (
+              chatUsers.map((user, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => navigation.navigate('ChatPage', { user: user })}
+                >
+                  <View style={styles.parentItem}>
+                    <Text style={styles.parentName}>{user.username}</Text>
+                    {/* Display the latest message for each chat */}
+                    <Text style={styles.latestMessage}>
+                      {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
+                        messages[`${user.id}_${getAuth().currentUser.uid}`][0]?.text}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <Text style={styles.noParentsText}>No users found.</Text>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal for sliding menu */}
       <Modal
         visible={menuVisible}
-        animationType="none" // Disable default animation
+        animationType="none"
         transparent={true}
-        onRequestClose={closeMenu} // Handle back button press
+        onRequestClose={closeMenu}
       >
         <View style={styles.modalContainer}>
-          {/* Overlay for dismissing the modal */}
           <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
-
-          {/* Animated sliding menu */}
-          <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]}>
+          <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]} >
             <View style={styles.menu}>
-              {/* Close button */}
               <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
                 <Text style={styles.closeButtonText}> X </Text>
               </TouchableOpacity>
@@ -99,8 +201,8 @@ const MessageScreen = ({ navigation }) => {
               <TouchableOpacity onPress={() => navigateToPage('LinkedParent')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Linked Parent</Text>
               </TouchableOpacity>
-               <TouchableOpacity onPress={() => navigateToPage('Myschedule')} style={styles.menuOption}>
-                 <Text style={styles.menuOptionText}>My Schedule</Text>
+              <TouchableOpacity onPress={() => navigateToPage('Myschedule')} style={styles.menuOption}>
+                <Text style={styles.menuOptionText}>My Schedule</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => navigateToPage('StudentLogin')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Logout</Text>
@@ -135,106 +237,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  messagecontainer: {
-    backgroundColor: '#CFE5FF',
-    width: '90%',
-    height: 206,
-    alignSelf: 'center',
-    top: '17%',
-    borderRadius: 21,
-    shadowColor: 'black',
-    shadowOffset: { width: 4, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
   logo: {
     width: 35,
     height: 34,
     resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    right: 100,
     elevation: 5,
-    left: '-67%',
   },
   gatesync: {
     width: 100,
     height: 34,
-    top: 5,
     resizeMode: 'contain',
-    marginRight: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    right: 100,
     elevation: 5,
-    left: '-67%',
   },
   menuIcon: {
     width: 30,
     height: 30,
     resizeMode: 'contain',
   },
-  navbarText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  profileIcon: {
-    width: 30,
-    height: 30,
-    resizeMode: 'contain',
-  },
-  content: {
-    marginTop: 20,
-    padding: 20,
-  },
   welcomeText: {
     fontSize: 36,
     fontWeight: '800',
-    fontFamily: 'Kanit-SemiBold',
     color: '#5394F2',
-    top: -295,
-  },
-  chatIcon: {
-    width: 70,
-    height: 70,
-    top: -5,
-    right: 5,
-  },
-  chatcircle: {
-    backgroundColor: '#fff',
-    width: 60,
-    height: 60,
-    borderRadius: 50,
-    top: -105,
-    right: -30,
-  },
-  chatname: {
-    fontFamily: 'Kanit-SemiBold',
-    fontSize: 20,
-    color: '#404B7C',
-    right: -80,
-    fontWeight: '800',
-    textAlign: 'auto',
-    top: -30,
-  },
-  chatbar: {
-    backgroundColor: '#CFE5FF',
-    width: '100%',
-    height: 75,
-    borderTopWidth: 2,
-    borderBottomWidth: 2,
-    borderRightColor: '#CFE5FF',
-    borderLeftColor: '#CFE5FF',
-    borderTopColor: '#fFF',
-    borderBottomColor: '#fFF',
-    alignSelf: 'center',
-    alignContent: 'center',
-    top: '20%',
+    marginTop: 20,
   },
   modalContainer: {
     flex: 1,
@@ -281,6 +307,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#333',
+  },
+  parentItem: {
+    backgroundColor: '#CFE5FF',
+    padding: 15,
+    marginVertical: 5,
+    borderRadius: 10,
+    elevation: 2,
+  },
+  parentName: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  parentListContainer: {
+    paddingHorizontal: 15,
+    marginTop: 20,
+  },
+  noParentsText: {
+    fontSize: 16,
+    color: '#999',
+    textAlign: 'center',
   },
 });
 

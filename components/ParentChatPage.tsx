@@ -1,46 +1,63 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  StyleSheet,
-  Platform,
-  Image,
-  Keyboard,
-  TouchableWithoutFeedback,
-  KeyboardAvoidingView,
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform, Image, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView } from 'react-native';
+import { collection, query, onSnapshot, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from "../components/firebase";
+import { getAuth } from "firebase/auth";
 
-const ChatPage = ({ navigation }) => {
-  const [messages, setMessages] = useState([]); // Store messages
-  const [newMessage, setNewMessage] = useState(''); // Store new message input
+const ParentChatPage = ({ navigation, route }) => {
+  const { user } = route.params; // Receiver's user data
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState('');
+
+  // Get current user's ID
+  const auth = getAuth();
+  const currentUserId = auth.currentUser?.uid;
+
+  if (!currentUserId) {
+    return <Text>Loading...</Text>; // Handle case where user is not logged in
+  }
+
+  // Generate unique chat ID (same for both users)
+  const chatId = [currentUserId, user.uid].sort().join('_');
+
+
+  // Fetch messages in real-time
+  useEffect(() => {
+    const messagesRef = collection(db, 'Chats', chatId, 'Messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const messagesData = querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setMessages(messagesData);
+    });
+
+    return () => unsubscribe(); // Unsubscribe when component unmounts
+  }, [chatId]);
 
   // Function to send a new message
-  const sendMessage = () => {
-    const message = newMessage.trim();
+  const sendMessage = async () => {
+    if (newMessage.trim() === '') return;
 
-    // Only add the message if it's not empty
-    if (message) {
-      const newMessageObject = { id: String(messages.length), text: message }; // Ensure id is string
-      setMessages([...messages, newMessageObject]); // Append the new message at the end
-      setNewMessage(''); // Clear the input field after sending
-    }
+    const messagesRef = collection(db, 'Chats', chatId, 'Messages');
+    await addDoc(messagesRef, {
+      text: newMessage,
+      senderId: currentUserId,
+      receiverId: user.id,
+      timestamp: serverTimestamp(),
+    });
+
+    setNewMessage(''); // Clear input field after sending
   };
 
-  // Render each message item in the chat list
-  const renderItem = ({ item }) => {
-    if (!item || typeof item.text !== 'string') {
-      return null; // Do not render invalid items
-    }
-
-    return (
-      <View style={styles.messageContainer}>
-        <Text style={styles.messageText}>{item.text}</Text>
-      </View>
-    );
-  };
+  // Render chat messages
+  const renderItem = ({ item }) => (
+    <View style={[styles.messageContainer, item.senderId === currentUserId ? styles.sentMessage : styles.receivedMessage]}>
+      <Text style={styles.messageText}>{item.text}</Text>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -49,19 +66,16 @@ const ChatPage = ({ navigation }) => {
         <View style={{ flex: 1 }}>
           {/* Navigation Bar */}
           <View style={styles.navbar}>
-            <TouchableOpacity onPress={() => navigation.navigate('ParentPage', { screen: 'Messages' })}>
-              <Image
-                source={require('../images/back.png')} // Replace with your back icon image path
-                style={styles.back}
-              />
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Image source={require('../images/back.png')} style={styles.back} />
             </TouchableOpacity>
-            <Text style={styles.name}>John Doe</Text>
+            <Text style={styles.name}>{user.username || 'Unknown User'}</Text>
             <Image source={require('../images/accountcircle.png')} style={styles.account} />
           </View>
 
           {/* Chat messages list */}
           <FlatList
-            data={[...messages].reverse()} // Reverse the order of messages
+            data={messages} // Firestore is already ordered
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.chatList}
@@ -71,11 +85,8 @@ const ChatPage = ({ navigation }) => {
         </View>
       </TouchableWithoutFeedback>
 
-      {/* Message Input Section wrapped in KeyboardAvoidingView */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} // Adjust behavior for iOS and Android
-        style={styles.inputContainer}
-      >
+      {/* Message Input Section */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.inputContainer}>
         <TextInput
           style={styles.input}
           value={newMessage}
@@ -90,6 +101,8 @@ const ChatPage = ({ navigation }) => {
     </View>
   );
 };
+
+
 
 const styles = StyleSheet.create({
   container: {
@@ -169,6 +182,14 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 50,
   },
+  sentMessage: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#5394F2',
+  },
+  receivedMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#E1E1E1',
+  },
 });
 
-export default ChatPage;
+export default ParentChatPage;

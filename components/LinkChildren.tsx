@@ -41,51 +41,62 @@ const LinkChildren = ({ navigation }) => {
     }
   };
 
-  const toggleStudentLink = async (student) => {
-    if (!auth.currentUser) {
-      Toast.show({ type: 'error', text1: 'No Parent Found' });
-      return;
+ const toggleStudentLink = async (student) => {
+  if (!auth.currentUser) {
+    Toast.show({ type: 'error', text1: 'No Parent Found' });
+    return;
+  }
+
+  try {
+    const linkedStudentRef = doc(db, 'parent', parentUid, 'LinkedStudent', student.id);
+    const linkedParentRef = doc(db, 'students', student.id, 'LinkedParent', parentUid);
+
+    // Fetch parent's contact number from Firestore
+    const parentDocRef = doc(db, 'parents', parentUid);
+    const parentDocSnap = await getDocs(query(collection(db, 'parent'), where('uid', '==', parentUid)));
+
+    let contactNumber = 'N/A'; // Default value
+    if (!parentDocSnap.empty) {
+      contactNumber = parentDocSnap.docs[0].data().contactNumber || 'N/A';
     }
-  
-    try {
-      const linkedStudentRef = doc(db, 'parent', parentUid, 'LinkedStudent', student.id);
-      const linkedParentRef = doc(db, 'students', student.id, 'LinkedParent', parentUid);
-  
-      const linkedStudentsSnapshot = await getDocs(collection(db, 'parent', parentUid, 'LinkedStudent'));
-      const alreadyLinked = linkedStudentsSnapshot.docs.some((doc) => doc.id === student.id);
-  
-      if (alreadyLinked) {
-        // ❌ Unlink Student
-        await deleteDoc(linkedStudentRef);
-        await deleteDoc(linkedParentRef);
-  
-        setLinkedStudents((prev) => prev.filter((s) => s.id !== student.id));
-        Toast.show({ type: 'info', text1: 'Student Unlinked' });
-      } else {
-        // ✅ Link Student
-        await setDoc(linkedStudentRef, {
-          username: student.username,
-          idNumber: student.idNumber,
-          course: student.course,
-          yearLevel: student.yearLevel,
-          studentUid: student.uid, // 🔹 Store student's UID
-        });
-  
-        await setDoc(linkedParentRef, {
-          username: auth.currentUser.displayName || 'Parent',
-          email: auth.currentUser.email,
-          contactNumber: 'N/A',
-          uid: parentUid, 
-        });
-  
-        setLinkedStudents((prev) => [...prev, student]);
-        Toast.show({ type: 'success', text1: 'Student Linked Successfully' });
-      }
-    } catch (error) {
-      console.error('❌ Error updating linked student:', error);
-      Toast.show({ type: 'error', text1: 'Error linking student' });
+
+    // Check if already linked
+    const linkedStudentsSnapshot = await getDocs(collection(db, 'parent', parentUid, 'LinkedStudent'));
+    const alreadyLinked = linkedStudentsSnapshot.docs.some((doc) => doc.id === student.id);
+
+    if (alreadyLinked) {
+      // ❌ Unlink Student
+      await deleteDoc(linkedStudentRef);
+      await deleteDoc(linkedParentRef);
+
+      setLinkedStudents((prev) => prev.filter((s) => s.id !== student.id));
+      Toast.show({ type: 'info', text1: 'Student Unlinked' });
+    } else {
+      // ✅ Link Student
+      await setDoc(linkedStudentRef, {
+        username: student.username,
+        idNumber: student.idNumber,
+        course: student.course,
+        yearLevel: student.yearLevel,
+        uid: student.uid, // 🔹 Store student's UID
+      });
+
+      await setDoc(linkedParentRef, {
+        username: auth.currentUser.displayName || 'Parent',
+        email: auth.currentUser.email,
+        contactNumber: contactNumber, // 🔹 Store parent's contact number
+        uid: parentUid,
+      });
+
+      setLinkedStudents((prev) => [...prev, student]);
+      Toast.show({ type: 'success', text1: 'Student Linked Successfully' });
     }
-  };
+  } catch (error) {
+    console.error('❌ Error updating linked student:', error);
+    Toast.show({ type: 'error', text1: 'Error linking student' });
+  }
+};
+
   
   return (
     <>
