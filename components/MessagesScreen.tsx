@@ -19,63 +19,73 @@ const MessageScreen = ({ navigation }) => {
         if (!currentUser) return;
   
         const { uid } = currentUser;  // Get the logged-in user's UID
+        console.log("Logged-in User UID:", uid); // Log the logged-in user's UID for debugging
   
-        // Fetch all parents from the parent collection
-        const parentsRef = collection(db, 'parent');
-        const parentsSnapshot = await getDocs(parentsRef);
-  
+        // Fetch the student's data for the logged-in user
+        const studentsRef = collection(db, 'students');
+        const studentsSnapshot = await getDocs(studentsRef);
         let linkedParents = [];
         const parentIds = new Set();  // Set to track unique parent IDs
   
-        // Check each parent if they're linked to the logged-in student
-        for (const parentDoc of parentsSnapshot.docs) {
-          const parentData = parentDoc.data();
-          if (!parentData) continue; // Skip if there's no data
+        // Find the logged-in student's document based on their UID
+        const loggedInStudent = studentsSnapshot.docs.find(
+          (doc) => doc.data().uid === uid
+        );
   
-          // Query the LinkedParent subcollection for the student to find matching uid
-          const studentsRef = collection(db, 'students');
-          const studentsSnapshot = await getDocs(studentsRef);
+        if (loggedInStudent) {
+          console.log("Logged-in Student found:", loggedInStudent.id);
   
-          for (const studentDoc of studentsSnapshot.docs) {
-            const studentId = studentDoc.id;
+          // Query the LinkedParent subcollection for the logged-in student
+          const linkedParentRef = collection(db, 'students', loggedInStudent.id, 'LinkedParent');
+          const linkedParentSnapshot = await getDocs(linkedParentRef);
   
-            // Query the LinkedParent subcollection for each student to check if this parent is linked
-            const linkedParentRef = query(
-              collection(db, 'students', studentId, 'LinkedParent'),
-              where('uid', '==', parentData.uid) // Match parent uid with the student
-            );
+          // Use a for...of loop to handle async operations properly
+          for (const parentLinkedDoc of linkedParentSnapshot.docs) {
+            if (parentLinkedDoc.exists()) {
+              const linkedParentData = parentLinkedDoc.data();
   
-            const linkedParentSnapshot = await getDocs(linkedParentRef);
+              // Now fetch the parent document from the 'parent' collection
+              const parentRef = query(
+                collection(db, 'parent'),
+                where('uid', '==', linkedParentData.uid) // Match the uid field in the 'parent' collection
+              );
   
-            // If this parent is linked to any student and not already added, add to the linkedParents array
-            linkedParentSnapshot.forEach((parentLinkedDoc) => {
-              if (parentLinkedDoc.exists()) {
-                // Ensure the parent is not added multiple times
-                if (!parentIds.has(parentDoc.id)) {
-                  parentIds.add(parentDoc.id);
-                  linkedParents.push({
-                    id: parentDoc.id || '', // Safely access the id
-                    username: parentData.username || 'Unknown Parent', // Handle missing name
-                    ...parentData,
-                  });
+              const parentSnapshot = await getDocs(parentRef);
+              parentSnapshot.forEach((parentDoc) => {
+                if (parentDoc.exists()) {
+                  const parentData = parentDoc.data();
+  
+                  // If the parent data is found and not already added, add it to the linkedParents array
+                  if (!parentIds.has(parentDoc.id)) {
+                    parentIds.add(parentDoc.id);
+                    linkedParents.push({
+                      id: parentDoc.id,
+                      username: parentData.username || 'Unknown Parent', // Handle missing name
+                      ...parentData,
+                    });
+                  }
                 }
-              }
-            });
+              });
+            }
           }
-        }
   
-        // Set the filtered linked parents (users)
-        setChatUsers(linkedParents);
-        setLoading(false); // Set loading to false after data is fetched
+          // Set the filtered linked parents (users) after all async calls are done
+          setChatUsers(linkedParents);
+          setLoading(false); // Set loading to false after data is fetched
+        } else {
+          console.log("Logged-in student not found.");
+          setLoading(false); // Set loading to false if no student found
+        }
       } catch (error) {
         console.error('Error fetching users:', error);
         setLoading(false);
       }
     };
   
+    // Call the fetchUsers function
     fetchUsers();
-  }, []);
-  
+  }, []); // Empty dependency array to only run once when the component mounts
+
   // Real-time listener for messages
   useEffect(() => {
     const unsubscribeMessages = chatUsers.map((user) => {

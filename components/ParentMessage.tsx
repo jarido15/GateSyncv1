@@ -13,68 +13,64 @@ const MessageScreen = ({ navigation }) => {
 
   useEffect(() => {
     const fetchUsers = async () => {
+      let linkedStudents = []; // Store unique linked students
       try {
         const currentUser = getAuth().currentUser;
         if (!currentUser) return;
-
-        const { uid } = currentUser; // Get the logged-in user's UID
-
+  
+        const { uid } = currentUser; // Get the logged-in parent's UID
+  
         // Query to find the logged-in parent
         const parentQuery = query(collection(db, 'parent'), where('uid', '==', uid));
         const parentSnapshot = await getDocs(parentQuery);
-
+  
         if (parentSnapshot.empty) {
           console.warn('No parent found for the logged-in user.');
-          setLoading(false);
           return;
         }
-
-        let linkedStudents = []; // Store unique linked students
-
+  
+        const studentUids = new Set(); // Use a set to avoid duplicate student UIDs
+  
         for (const parentDoc of parentSnapshot.docs) {
           const parentId = parentDoc.id;
-
+  
           // Query LinkedStudent subcollection for the logged-in parent
           const linkedStudentRef = collection(db, 'parent', parentId, 'LinkedStudent');
           const linkedStudentSnapshot = await getDocs(linkedStudentRef);
-
+  
           for (const linkedDoc of linkedStudentSnapshot.docs) {
-            if (!linkedDoc.exists()) continue;
-
-            const studentUid = linkedDoc.data()?.uid;
-            if (!studentUid) continue; // Skip if UID is missing
-
-            // Check if the student is already in the array to prevent duplicates
-            if (linkedStudents.some(student => student.uid === studentUid)) continue;
-
-            // Query the 'students' collection to get student details
-            const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
-            const studentSnapshot = await getDocs(studentQuery);
-
-            if (!studentSnapshot.empty) {
-              const studentDoc = studentSnapshot.docs[0];
-              const studentData = studentDoc.data();
-
-              linkedStudents.push({
-                id: studentDoc.id,
-                uid: studentData?.uid,
-                username: studentData?.username || 'Unknown Student',
-                ...studentData,
-              });
+            if (linkedDoc.exists()) {
+              const studentUid = linkedDoc.data()?.uid;
+              if (studentUid) studentUids.add(studentUid);
             }
           }
         }
-
-        setChatUsers(linkedStudents); // Set the chat users state
-        setLoading(false);
+  
+        // Fetch all students from the 'students' collection whose UID is in the LinkedStudent subcollection
+        const studentQuery = query(collection(db, 'students'), where('uid', 'in', Array.from(studentUids)));
+        const studentSnapshot = await getDocs(studentQuery);
+  
+        studentSnapshot.forEach((studentDoc) => {
+          const studentData = studentDoc.data();
+          linkedStudents.push({
+            id: studentDoc.id,
+            uid: studentData?.uid,
+            username: studentData?.username || 'Unknown Student',
+            ...studentData,
+          });
+        });
+  
+        setChatUsers(linkedStudents);
       } catch (error) {
         console.error('Error fetching users:', error);
-        setLoading(false);
+      } finally {
+        setLoading(false); // Set loading to false after data is fetched or if an error occurs
       }
     };
-
+  
     fetchUsers();
   }, []);
+  
 
   // Listen for new messages for each chat user
   useEffect(() => {
