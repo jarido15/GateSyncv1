@@ -12,49 +12,52 @@ const MessageScreen = ({ navigation }) => {
   const [messages, setMessages] = useState({}); // Store messages by chatId
   const slideAnim = useRef(new Animated.Value(-400)).current;
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const currentUser = getAuth().currentUser;
-        if (!currentUser) return;
-  
-        const { uid } = currentUser;  // Get the logged-in user's UID
-        console.log("Logged-in User UID:", uid); // Log the logged-in user's UID for debugging
-  
-        // Fetch the student's data for the logged-in user
-        const studentsRef = collection(db, 'students');
-        const studentsSnapshot = await getDocs(studentsRef);
-        let linkedParents = [];
-        const parentIds = new Set();  // Set to track unique parent IDs
-  
-        // Find the logged-in student's document based on their UID
-        const loggedInStudent = studentsSnapshot.docs.find(
-          (doc) => doc.data().uid === uid
-        );
-  
-        if (loggedInStudent) {
-          console.log("Logged-in Student found:", loggedInStudent.id);
-  
-          // Query the LinkedParent subcollection for the logged-in student
-          const linkedParentRef = collection(db, 'students', loggedInStudent.id, 'LinkedParent');
-          const linkedParentSnapshot = await getDocs(linkedParentRef);
-  
-          // Use a for...of loop to handle async operations properly
-          for (const parentLinkedDoc of linkedParentSnapshot.docs) {
-            if (parentLinkedDoc.exists()) {
-              const linkedParentData = parentLinkedDoc.data();
-  
+// Modify the fetchUsers function to filter by status
+useEffect(() => {
+  const fetchUsers = async () => {
+    try {
+      const currentUser = getAuth().currentUser;
+      if (!currentUser) return;
+
+      const { uid } = currentUser;  // Get the logged-in user's UID
+      console.log("Logged-in User UID:", uid); // Log the logged-in user's UID for debugging
+
+      // Fetch the student's data for the logged-in user
+      const studentsRef = collection(db, 'students');
+      const studentsSnapshot = await getDocs(studentsRef);
+      let linkedParents = [];
+      const parentIds = new Set();  // Set to track unique parent IDs
+
+      // Find the logged-in student's document based on their UID
+      const loggedInStudent = studentsSnapshot.docs.find(
+        (doc) => doc.data().uid === uid
+      );
+
+      if (loggedInStudent) {
+        console.log("Logged-in Student found:", loggedInStudent.id);
+
+        // Query the LinkedParent subcollection for the logged-in student
+        const linkedParentRef = collection(db, 'students', loggedInStudent.id, 'LinkedParent');
+        const linkedParentSnapshot = await getDocs(linkedParentRef);
+
+        // Use a for...of loop to handle async operations properly
+        for (const parentLinkedDoc of linkedParentSnapshot.docs) {
+          if (parentLinkedDoc.exists()) {
+            const linkedParentData = parentLinkedDoc.data();
+
+            // Only proceed if the status is 'accepted'
+            if (linkedParentData.status === 'accepted') {
               // Now fetch the parent document from the 'parent' collection
               const parentRef = query(
                 collection(db, 'parent'),
                 where('uid', '==', linkedParentData.uid) // Match the uid field in the 'parent' collection
               );
-  
+
               const parentSnapshot = await getDocs(parentRef);
               parentSnapshot.forEach((parentDoc) => {
                 if (parentDoc.exists()) {
                   const parentData = parentDoc.data();
-  
+
                   // If the parent data is found and not already added, add it to the linkedParents array
                   if (!parentIds.has(parentDoc.id)) {
                     parentIds.add(parentDoc.id);
@@ -68,23 +71,24 @@ const MessageScreen = ({ navigation }) => {
               });
             }
           }
-  
-          // Set the filtered linked parents (users) after all async calls are done
-          setChatUsers(linkedParents);
-          setLoading(false); // Set loading to false after data is fetched
-        } else {
-          console.log("Logged-in student not found.");
-          setLoading(false); // Set loading to false if no student found
         }
-      } catch (error) {
-        console.error('Error fetching users:', error);
-        setLoading(false);
+
+        // Set the filtered linked parents (users) after all async calls are done
+        setChatUsers(linkedParents);
+        setLoading(false); // Set loading to false after data is fetched
+      } else {
+        console.log("Logged-in student not found.");
+        setLoading(false); // Set loading to false if no student found
       }
-    };
-  
-    // Call the fetchUsers function
-    fetchUsers();
-  }, []); // Empty dependency array to only run once when the component mounts
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setLoading(false);
+    }
+  };
+
+  // Call the fetchUsers function
+  fetchUsers();
+}, []); // Empty dependency array to only run once when the component mounts
 
   // Real-time listener for messages
   useEffect(() => {

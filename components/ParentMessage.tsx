@@ -34,9 +34,10 @@ const MessageScreen = ({ navigation }) => {
         for (const parentDoc of parentSnapshot.docs) {
           const parentId = parentDoc.id;
   
-          // Query LinkedStudent subcollection for the logged-in parent
+          // Query LinkedStudent subcollection for the logged-in parent and filter by status 'accepted'
           const linkedStudentRef = collection(db, 'parent', parentId, 'LinkedStudent');
-          const linkedStudentSnapshot = await getDocs(linkedStudentRef);
+          const linkedStudentQuery = query(linkedStudentRef, where('status', '==', 'accepted'));
+          const linkedStudentSnapshot = await getDocs(linkedStudentQuery);
   
           for (const linkedDoc of linkedStudentSnapshot.docs) {
             if (linkedDoc.exists()) {
@@ -44,6 +45,13 @@ const MessageScreen = ({ navigation }) => {
               if (studentUid) studentUids.add(studentUid);
             }
           }
+        }
+  
+        // Only proceed with fetching students if there are student UIDs
+        if (studentUids.size === 0) {
+          console.log('No accepted students found.');
+          setLoading(false); // Set loading to false as no students were found
+          return;
         }
   
         // Fetch all students from the 'students' collection whose UID is in the LinkedStudent subcollection
@@ -70,6 +78,7 @@ const MessageScreen = ({ navigation }) => {
   
     fetchUsers();
   }, []);
+  
   
 
   // Listen for new messages for each chat user

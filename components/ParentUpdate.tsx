@@ -1,12 +1,45 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { db } from '../components/firebase'; // Your Firebase Firestore setup
+import { getAuth } from 'firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
 
 const ParentUpdate = ({ navigation }) => {
     const [menuVisible, setMenuVisible] = useState(false); // State to control menu modal visibility
     const [notifications, setNotifications] = useState([]); // Array to hold notifications
+    const [linkedStudents, setLinkedStudents] = useState([]); // Array to hold linked students
     const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
-  
+    const auth = getAuth();
+    const currentUserUID = auth.currentUser ? auth.currentUser.uid : null;
+
+    useEffect(() => {
+        if (currentUserUID) {
+            const fetchLinkedStudents = async () => {
+                try {
+                    // Query the linked students for the current parent
+                    const q = query(
+                        collection(db, 'parent', currentUserUID, 'LinkedStudent')
+                    );
+                    const linkedStudentsSnapshot = await getDocs(q);
+    
+                    const students = linkedStudentsSnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        username: doc.data().username, // Assuming 'username' field exists in the document
+                        ...doc.data(),
+                    }));
+    
+                    setLinkedStudents(students);  // Set the linked students without notifications
+                } catch (error) {
+                    console.error('Error fetching linked students: ', error);
+                }
+            };
+    
+            fetchLinkedStudents();
+        }
+    }, [currentUserUID]);
+    
+
     const openMenu = () => {
         setMenuVisible(true); // Show the modal
         Animated.timing(slideAnim, {
@@ -29,10 +62,94 @@ const ParentUpdate = ({ navigation }) => {
         navigation.navigate(page); // Navigate to the selected page
     };
 
+    const handleAccept = async (studentId, studentUID) => {
+        try {
+            // Step 1: Find the student by matching the 'uid' field in the students collection
+            const studentsRef = collection(db, 'students');
+            const studentsQuery = query(studentsRef, where('uid', '==', studentUID)); // Match the student's UID with 'uid' in students collection
+            const studentsSnapshot = await getDocs(studentsQuery);
+    
+            if (!studentsSnapshot.empty) {
+                const studentDoc = studentsSnapshot.docs[0]; // Assuming there's only one matching document
+                console.log('Student found:', studentDoc.id);
+    
+                // Step 2: Find the parent in the LinkedParent subcollection inside the student's document
+                const linkedParentRef = collection(studentDoc.ref, 'LinkedParent');
+                const linkedParentQuery = query(linkedParentRef, where('uid', '==', currentUserUID)); // Match the parent's UID
+                const linkedParentSnapshot = await getDocs(linkedParentQuery);
+    
+                if (!linkedParentSnapshot.empty) {
+                    console.log('Parent found in LinkedParent subcollection inside student document');
+    
+                    // If found, update the status in the LinkedParent subcollection inside the student's document
+                    const parentDocRef = doc(db, 'students', studentDoc.id, 'LinkedParent', linkedParentSnapshot.docs[0].id);
+                    await updateDoc(parentDocRef, {
+                        status: 'accepted', // Update status in LinkedParent subcollection
+                    });
+                    console.log('Status updated in LinkedParent');
+                } else {
+                    console.error('Parent not found in LinkedParent subcollection inside student document');
+                    // If the parent does not exist, create a new document in LinkedParent subcollection
+                    const newLinkedParentDocRef = doc(collection(studentDoc.ref, 'LinkedParent'));
+                    await setDoc(newLinkedParentDocRef, {
+                        uid: currentUserUID,
+                        status: 'accepted', // Set initial status for new LinkedParent
+                    });
+                    console.log('Created new parent document in LinkedParent with accepted status');
+                }
+    
+                // Step 3: Now, update the status in the LinkedStudent subcollection of the parent document
+                const linkedStudentRef = collection(db, 'parent', currentUserUID, 'LinkedStudent');
+                const linkedStudentQuery = query(linkedStudentRef, where('uid', '==', studentUID)); // Match the student's UID in the parent's LinkedStudent subcollection
+                const linkedStudentSnapshot = await getDocs(linkedStudentQuery);
+    
+                if (!linkedStudentSnapshot.empty) {
+                    console.log('Student found in LinkedStudent subcollection inside parent document');
+    
+                    // Update the status in the LinkedStudent subcollection of the parent
+                    const linkedStudentDocRef = doc(db, 'parent', currentUserUID, 'LinkedStudent', linkedStudentSnapshot.docs[0].id);
+                    await updateDoc(linkedStudentDocRef, {
+                        status: 'accepted', // Update status in LinkedStudent subcollection of parent
+                    });
+    
+                    console.log('Status updated in LinkedStudent subcollection');
+                    // Update the state to reflect changes in the parent component (LinkedStudent state)
+                    setLinkedStudents(prevState =>
+                        prevState.map(student =>
+                            student.id === studentId ? { ...student, status: 'accepted' } : student
+                        )
+                    );
+                } else {
+                    console.error('Student not found in LinkedStudent subcollection inside parent document');
+                }
+            } else {
+                console.error('Student not found in students collection');
+            }
+        } catch (error) {
+            console.error('Error accepting student: ', error);
+        }
+    };
+    
+    
+    const handleDelete = async (studentId) => {
+        try {
+            // Delete the LinkedStudent entry
+            const studentRef = doc(db, 'parent', currentUserUID, 'LinkedStudent', studentId);
+            await deleteDoc(studentRef);
+
+            // Update state to remove the deleted student
+            setLinkedStudents(prevState =>
+                prevState.filter(student => student.id !== studentId)
+            );
+        } catch (error) {
+            console.error('Error deleting student: ', error);
+        }
+    };
+
     return (
         <>
             <ScrollView style={styles.container}>
-            <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+                <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
                 <View style={styles.navbar}>
                     <TouchableOpacity onPress={openMenu}>
                         <Image
@@ -64,6 +181,36 @@ const ParentUpdate = ({ navigation }) => {
                             </Text>
                         ))
                     )}
+
+                    <View style={styles.linkedStudentsContainer}>
+                        <Text style={styles.sectionTitle}>Linked Students</Text>
+                        {linkedStudents.length === 0 ? (
+                            <Text style={styles.noNotificationText}>No Linked Students</Text>
+                        ) : (
+                            linkedStudents.map(student => (
+                                <View key={student.id} style={styles.studentItem}>
+                                    <Text style={styles.studentName}>{student.username}</Text>
+                                    <Text style={styles.studentStatus}>Status: {student.status}</Text>
+                                    {student.status !== 'accepted' && (
+                                        <View style={styles.studentButtons}>
+                                            <TouchableOpacity
+                                                onPress={() => handleAccept(student.id, student.uid)}
+                                                style={styles.acceptButton}
+                                            >
+                                                <Text style={styles.buttonText}>Accept</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                onPress={() => handleDelete(student.id)}
+                                                style={styles.deleteButton}
+                                            >
+                                                <Text style={styles.buttonText}>Delete</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </View>
+                            ))
+                        )}
+                    </View>
                 </View>
             </ScrollView>
 
@@ -75,8 +222,7 @@ const ParentUpdate = ({ navigation }) => {
             >
                 <View style={styles.modalContainer}>
                     <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
-
-                    <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]}>
+                    <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]} >
                         <View style={styles.menu}>
                             <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
                                 <Text style={styles.closeButtonText}>X</Text>
@@ -150,74 +296,11 @@ const styles = StyleSheet.create({
         height: 30, // Adjust menu icon size
         resizeMode: 'contain',
     },
-    navbarText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#fff', // Text color
-    },
-    profileIcon: {
-        width: 30, // Adjust profile icon size
-        height: 30, // Adjust profile icon size
-        resizeMode: 'contain',
-    },
     content: {
         marginTop: 20,
         padding: 20,
     },
-    welcomeText: {
-        fontSize: 36,
-        fontWeight: '800',
-        fontFamily: 'Kanit',
-        color: '#5394F2',
-        top: -30,
-    },
-    modalContainer: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent overlay
-        justifyContent: 'flex-start',
-      },
-      overlay: {
-        flex: 1,
-        width: '100%',
-      },
-      slideMenu: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        width: '80%', // Adjust the width as needed
-        backgroundColor: '#fff',
-        height: '100%',
-        borderTopRightRadius: 20,
-        padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        elevation: 5, // Shadow for Android
-      },
-      menu: {
-        flex: 1,
-      },
-      closeButton: {
-        alignSelf: 'flex-end',
-        marginBottom: 10,
-      },
-      closeButtonText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: '#333',
-      },
-      menuOption: {
-        paddingVertical: 15,
-        borderBottomWidth: 1,
-        borderBottomColor: '#ddd',
-      },
-      menuOptionText: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#333',
-      },
-      notif:{
+    notif:{
         width: '100%',
         height: 130,
         borderRadius:21 ,
@@ -233,28 +316,113 @@ const styles = StyleSheet.create({
         width: 150,
         height: 160,
         left: '53%',
-        top: '-43%',
+        top: '-32%',
       },
-      noitfText:{
+    noitfText: {
         fontSize: 25,
-        fontFamily: 'MartianMono-Regular',
-        color: '#fff',
-        fontWeight: '800',
-        top: '-68%',
-        left: '8%',
-      },
-      noNotificationText: {
+        top: '-52%',
+        fontWeight: '600',
+        left: '10%',
+    },
+    noNotificationText: {
+        textAlign: 'center',
+        color: '#888',
+        fontSize: 16,
+        top: 10,
+    },
+    name: {
+        top: 60,
+    },
+    linkedStudentsContainer: {
+        top: '-45%',
+    },
+    sectionTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    studentItem: {
+        top: 25,
+        padding: 10,
+        borderRadius: 10,
+        backgroundColor: '#f0f0f0',
+    },
+    studentName: {
         fontSize: 18,
         fontWeight: '600',
-        color: '#888',
-        textAlign: 'center',
-        marginTop: 20,
+        top: 0,
+    },
+    studentStatus: {
+        fontSize: 16,
+        color: '#666',
+        marginVertical: 5,
+    },
+    studentButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    acceptButton: {
+        backgroundColor: '#4CAF50',
+        padding: 10,
+        borderRadius: 5,
+    },
+    deleteButton: {
+        backgroundColor: '#FF5722',
+        padding: 10,
+        borderRadius: 5,
+    },
+    buttonText: {
+        color: '#fff',
+        fontWeight: '600',
+    },
+    modalContainer: {
+        flex: 1,
+        justifyContent: 'flex-end',
+        alignItems: 'flex-end',
+    },
+    overlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    slideMenu: {
+        width: '60%',
+        backgroundColor: '#fff',
+        height: '100%',
+        paddingTop: 30,
+        paddingHorizontal: 20,
+        borderTopLeftRadius: 10,
+        borderBottomLeftRadius: 10,
+    },
+    menu: {
+        flex: 1,
+        justifyContent: 'flex-start',
+    },
+    closeButton: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+    },
+    closeButtonText: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: '#000',
+    },
+    menuOption: {
+        paddingVertical: 15,
+    },
+    menuOptionText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#333',
     },
     notificationText: {
         fontSize: 16,
-        fontWeight: '500',
+        marginVertical: 5,
         color: '#333',
-        paddingVertical: 5,
     },
 });
 

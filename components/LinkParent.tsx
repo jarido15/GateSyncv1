@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList 
 } from 'react-native';
@@ -14,6 +14,35 @@ const LinkedParent = ({ navigation }) => {
 
   const auth = getAuth();
   const studentUid = auth.currentUser ? auth.currentUser.uid : '';
+
+  useEffect(() => {
+    if (studentUid) {
+      fetchLinkedParents();
+    }
+  }, [studentUid]);
+
+  // 🏗 Fetch linked parents from Firestore
+  const fetchLinkedParents = async () => {
+    try {
+      const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
+      const studentSnapshot = await getDocs(studentQuery);
+
+      if (studentSnapshot.empty) return;
+
+      const studentDoc = studentSnapshot.docs[0];
+      const docUid = studentDoc.id;
+
+      const linkedParentSnapshot = await getDocs(collection(db, 'students', docUid, 'LinkedParent'));
+      const linkedParentList = linkedParentSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+
+      setLinkedParents(linkedParentList);
+    } catch (error) {
+      console.error('❌ Error fetching linked parents:', error);
+    }
+  };
 
   // 🔍 Search Parent in Firestore
   const searchParent = async () => {
@@ -50,7 +79,6 @@ const LinkedParent = ({ navigation }) => {
     }
   
     try {
-      // 🔍 Find the student's document ID (`docUid`)
       const studentQuery = query(collection(db, 'students'), where('uid', '==', auth.currentUser.uid));
       const studentSnapshot = await getDocs(studentQuery);
   
@@ -59,66 +87,64 @@ const LinkedParent = ({ navigation }) => {
         return;
       }
   
-      // Get student's document ID (`docUid`)
       const studentDoc = studentSnapshot.docs[0];
-      const docUid = studentDoc.id; 
-      const studentData = studentDoc.data(); // Get student data
+      const docUid = studentDoc.id;
+      const studentData = studentDoc.data();
   
-      // Parent's `LinkedStudent` reference
       const linkedStudentRef = doc(db, 'parent', parent.id, 'LinkedStudent', docUid);
-      
-      // Student's `LinkedParent` reference
       const linkedParentRef = doc(db, 'students', docUid, 'LinkedParent', parent.id);
   
-      // Check if already linked
       const linkedParentSnapshot = await getDocs(collection(db, 'students', docUid, 'LinkedParent'));
       const alreadyLinked = linkedParentSnapshot.docs.some((doc) => doc.id === parent.id);
   
       if (alreadyLinked) {
-        // ❌ Unlink Parent
-        await deleteDoc(linkedParentRef); // Remove from student's `LinkedParent`
-        await deleteDoc(linkedStudentRef); // Remove from parent's `LinkedStudent`
+        await deleteDoc(linkedParentRef);
+        await deleteDoc(linkedStudentRef);
   
         setLinkedParents((prev) => prev.filter((p) => p.id !== parent.id));
         Toast.show({ type: 'info', text1: 'Parent Unlinked' });
       } else {
-        // ✅ Link Parent
-        await setDoc(linkedParentRef, {
+        // Set the status to "Pending" when linking
+        const linkedParentData = {
           username: parent.username,
           email: parent.email,
           contactNumber: parent.contactNumber || 'N/A',
-          uid: parent.id, 
-        });
+          uid: parent.id,
+          status: 'Pending', // Set the status to "Pending"
+        };
   
-        // ✅ Link Student inside Parent's `LinkedStudent` (now storing studentUid)
-        await setDoc(linkedStudentRef, {
+        const linkedStudentData = {
           username: studentData.username,
           course: studentData.course,
           idNumber: studentData.idNumber,
           yearLevel: studentData.yearLevel,
-          uid: studentData.uid, // 🔹 Store student's UID
-        });
+          uid: studentData.uid,
+          status: 'Pending', // Set the status to "Pending"
+        };
+  
+        // Link parent and student with "Pending" status
+        await setDoc(linkedParentRef, linkedParentData);
+        await setDoc(linkedStudentRef, linkedStudentData);
   
         setLinkedParents((prev) => [...prev, parent]);
-        Toast.show({ type: 'success', text1: 'Parent Linked Successfully' });
+        Toast.show({ type: 'success', text1: 'Parent Linked Successfully (Pending)' });
       }
     } catch (error) {
       console.error('❌ Error updating linked parent:', error);
       Toast.show({ type: 'error', text1: 'Error linking parent' });
     }
   };
+  
 
 
   return (
     <>
-      {/* 🏁 FlatList for UI */}
       <FlatList
         data={searchResults}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <>
-            {/* 🔹 Navigation Bar */}
             <View style={styles.navbar}>
               <TouchableOpacity onPress={() => navigation.navigate('StudentPage')}>
                 <Image source={require('../images/back.png')} style={styles.back} />
@@ -129,7 +155,6 @@ const LinkedParent = ({ navigation }) => {
               </View>
             </View>
 
-            {/* 🔍 Search Bar */}
             <View style={styles.searchContainer}>
               <Image source={require('../images/search.png')} style={styles.searchicon} />
               <TextInput
@@ -147,28 +172,45 @@ const LinkedParent = ({ navigation }) => {
           const isLinked = linkedParents.some(p => p.id === item.id);
           return (
             <View style={styles.messagecontainer}>
-              <TouchableOpacity onPress={() => navigation.navigate('ChatPage')}>
-                <View style={styles.chatbar} />
-                <Text style={styles.chatname}>{item.username}</Text>
-                <View style={styles.chatcircle}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('ChatPage', { user: item })}
+                style={styles.resultCard} // Wrap everything for full click effect
+              >
+                <View style={styles.profileWrapper}>
                   <Image source={require('../images/account_circle.png')} style={styles.chatIcon} />
-                  {isLinked ? (
-                    <Image source={require('../images/checked.png')} style={styles.addicon} />
-                  ) : (
-                    <TouchableOpacity onPress={() => toggleParentLink(item)}>
-                      <Image source={require('../images/add.png')} style={styles.addicon} />
-                    </TouchableOpacity>
-                  )}
                 </View>
+        
+                <View style={styles.resultTextContainer}>
+                  <Text style={styles.chatname}>{item.username}</Text>
+                </View>
+        
+                {/* 🔗 Toggle Link Button */}
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation(); // Prevent navigating when clicking the button
+                    toggleParentLink(item);
+                  }}
+                  style={styles.addButton}
+                >
+                  <Image
+                    source={
+                      isLinked
+                        ? require('../images/checked.png') // ✅ If already linked
+                        : require('../images/add.png') // ➕ If not linked
+                    }
+                    style={styles.addicon}
+                  />
+                </TouchableOpacity>
+        
               </TouchableOpacity>
             </View>
           );
         }}
         ListEmptyComponent={() => <Text style={styles.noResults}>No results found</Text>}
-      />
-
-      {/* Toast Component */}
-      <Toast />
+        />
+        
+        <Toast />
+        
     </>
   );
 };
@@ -217,27 +259,53 @@ const styles = StyleSheet.create({
   messagecontainer: {
     backgroundColor: '#CFE5FF',
     width: '90%',
-    height: 206,
-    borderRadius: 21,
+    borderRadius: 15,
     alignSelf: 'center',
-    top: '5%',
+    marginVertical: 10,
+    padding: 15,
+    flexDirection: 'row',
     shadowColor: 'black',
     shadowOffset: { width: 4, height: 2 },
     shadowOpacity: 0.3,
     elevation: 5,
   },
-  chatIcon: { width: 104, height: 104, top: -15, right: 15 },
-  addicon: { width: 34, height: 33, top: -45, right: 10 },
-  chatcircle: { backgroundColor: '#fff', width: 81, height: 75, borderRadius: 50, top: -45, right: -30 },
-  chatname: { fontSize: 20, color: '#fff', fontWeight: '800', alignSelf: 'center', top: 5 },
-  chatbar: {
-    backgroundColor: '#6b9bfa',
-    width: '80%',
-    height: 48,
-    borderRadius: 21,
-    elevation: 5,
-    alignSelf: 'center',
-    top: '28%',
+  chatIcon: { width: 50, height: 50, borderRadius: 25 },
+  addicon: { width: 25, height: 25 },
+  resultCard: {
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    padding: 10,
+    borderRadius: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  profileWrapper: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#E3F2FD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15,
+  },
+  resultTextContainer: { flex: 1 },
+  resultName: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#6B9BFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
   },
   noResults: { textAlign: 'center', marginTop: 20, fontSize: 16, color: '#999' },
 });

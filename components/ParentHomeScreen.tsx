@@ -61,41 +61,43 @@ const ParentHomeScreen = ({ navigation }) => {
   const fetchStudentSchedule = async () => {
     try {
       if (!auth.currentUser) return;
-
-      // Get linked student UIDs
+  
+      // Get linked student UIDs where status is "accepted"
       const parentRef = collection(db, 'parent', auth.currentUser.uid, 'LinkedStudent');
-      const linkedStudentSnapshot = await getDocs(parentRef);
-
+      const linkedStudentQuery = query(parentRef, where('status', '==', 'accepted'));
+      const linkedStudentSnapshot = await getDocs(linkedStudentQuery);
+  
       if (linkedStudentSnapshot.empty) {
-        console.log('No linked students found');
+        console.log('No accepted students found');
         return;
       }
-
+  
       const allSchedules = [];
       // Loop through linked students and fetch schedules
       for (const studentDoc of linkedStudentSnapshot.docs) {
         const studentData = studentDoc.data();
         const uid = studentData.uid;
-
+  
         // Query schedules where studentUid matches
         const scheduleQuery = query(
           collection(db, 'schedules'),
           where('uid', '==', uid)
         );
         const scheduleSnapshot = await getDocs(scheduleQuery);
-
+  
         if (!scheduleSnapshot.empty) {
           scheduleSnapshot.forEach((sched) => {
             allSchedules.push(sched.data()); // Add schedule to the array
           });
         }
       }
-
+  
       setSchedule(allSchedules); // Update schedule state with all schedules
     } catch (error) {
       console.error('Error fetching student schedule:', error);
     }
   };
+  
 
   const openMenu = () => {
     setMenuVisible(true);

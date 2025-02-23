@@ -15,22 +15,31 @@ const LinkChildren = ({ navigation }) => {
   const auth = getAuth();
   const parentUid = auth.currentUser ? auth.currentUser.uid : '';
 
-  // 🔍 Search for a student in Firestore by username
   const searchStudent = async () => {
     if (!searchQuery.trim()) {
       setSearchResult(null);
       Toast.show({ type: 'info', text1: 'Enter a username to search' });
       return;
     }
-
+  
     try {
       const studentRef = collection(db, 'students');
       const q = query(studentRef, where('username', '==', searchQuery));
       const querySnapshot = await getDocs(q);
-
+  
       if (!querySnapshot.empty) {
         const studentDoc = querySnapshot.docs[0];
-        setSearchResult({ id: studentDoc.id, ...studentDoc.data() });
+        const studentData = { id: studentDoc.id, ...studentDoc.data() };
+  
+        // Check if the student is already linked
+        const linkedStudentRef = collection(db, 'parent', parentUid, 'LinkedStudent');
+        const linkedQuery = query(linkedStudentRef, where('__name__', '==', studentData.id)); // Check by document ID
+        const linkedSnapshot = await getDocs(linkedQuery);
+  
+        const isLinked = !linkedSnapshot.empty;
+  
+        // Set the search result with linked status
+        setSearchResult({ ...studentData, isLinked });
       } else {
         setSearchResult(null);
         Toast.show({ type: 'info', text1: 'No Student Found' });
@@ -40,62 +49,60 @@ const LinkChildren = ({ navigation }) => {
       Toast.show({ type: 'error', text1: 'Error searching student' });
     }
   };
-
- const toggleStudentLink = async (student) => {
-  if (!auth.currentUser) {
-    Toast.show({ type: 'error', text1: 'No Parent Found' });
-    return;
-  }
-
-  try {
-    const linkedStudentRef = doc(db, 'parent', parentUid, 'LinkedStudent', student.id);
-    const linkedParentRef = doc(db, 'students', student.id, 'LinkedParent', parentUid);
-
-    // Fetch parent's contact number from Firestore
-    const parentDocRef = doc(db, 'parents', parentUid);
-    const parentDocSnap = await getDocs(query(collection(db, 'parent'), where('uid', '==', parentUid)));
-
-    let contactNumber = 'N/A'; // Default value
-    if (!parentDocSnap.empty) {
-      contactNumber = parentDocSnap.docs[0].data().contactNumber || 'N/A';
+  
+  const toggleStudentLink = async (student) => {
+    if (!auth.currentUser) {
+      Toast.show({ type: 'error', text1: 'No Parent Found' });
+      return;
     }
-
-    // Check if already linked
-    const linkedStudentsSnapshot = await getDocs(collection(db, 'parent', parentUid, 'LinkedStudent'));
-    const alreadyLinked = linkedStudentsSnapshot.docs.some((doc) => doc.id === student.id);
-
-    if (alreadyLinked) {
-      // ❌ Unlink Student
-      await deleteDoc(linkedStudentRef);
-      await deleteDoc(linkedParentRef);
-
-      setLinkedStudents((prev) => prev.filter((s) => s.id !== student.id));
-      Toast.show({ type: 'info', text1: 'Student Unlinked' });
-    } else {
-      // ✅ Link Student
-      await setDoc(linkedStudentRef, {
-        username: student.username,
-        idNumber: student.idNumber,
-        course: student.course,
-        yearLevel: student.yearLevel,
-        uid: student.uid, // 🔹 Store student's UID
-      });
-
-      await setDoc(linkedParentRef, {
-        username: auth.currentUser.displayName || 'Parent',
-        email: auth.currentUser.email,
-        contactNumber: contactNumber, // 🔹 Store parent's contact number
-        uid: parentUid,
-      });
-
-      setLinkedStudents((prev) => [...prev, student]);
-      Toast.show({ type: 'success', text1: 'Student Linked Successfully' });
+  
+    try {
+      const linkedStudentRef = doc(db, 'parent', parentUid, 'LinkedStudent', student.id);
+      const linkedParentRef = doc(db, 'students', student.id, 'LinkedParent', parentUid);
+  
+      // Check if already linked
+      const linkedStudentsSnapshot = await getDocs(collection(db, 'parent', parentUid, 'LinkedStudent'));
+      const alreadyLinked = linkedStudentsSnapshot.docs.some((doc) => doc.id === student.id);
+  
+      if (alreadyLinked) {
+        // ❌ Unlink Student
+        await deleteDoc(linkedStudentRef);
+        await deleteDoc(linkedParentRef);
+  
+        setLinkedStudents((prev) => prev.filter((s) => s.id !== student.id));
+        setSearchResult((prev) => prev ? { ...prev, isLinked: false } : null); // Update UI
+  
+        Toast.show({ type: 'info', text1: 'Student Unlinked' });
+      } else {
+        // ✅ Link Student and set status to "Pending"
+        await setDoc(linkedStudentRef, {
+          username: student.username,
+          idNumber: student.idNumber,
+          course: student.course,
+          yearLevel: student.yearLevel,
+          uid: student.uid,
+          status: 'Pending', // Set status to "Pending"
+        });
+  
+        await setDoc(linkedParentRef, {
+          username: auth.currentUser.displayName || 'Parent',
+          email: auth.currentUser.email,
+          uid: parentUid,
+          status: 'Pending', // Set status to "Pending"
+        });
+  
+        setLinkedStudents((prev) => [...prev, student]);
+        setSearchResult((prev) => prev ? { ...prev, isLinked: true } : null); // Update UI
+  
+        Toast.show({ type: 'success', text1: 'Student Linked Successfully with Pending Status' });
+      }
+    } catch (error) {
+      console.error('❌ Error updating linked student:', error);
+      Toast.show({ type: 'error', text1: 'Error linking student' });
     }
-  } catch (error) {
-    console.error('❌ Error updating linked student:', error);
-    Toast.show({ type: 'error', text1: 'Error linking student' });
-  }
-};
+  };
+  
+  
 
   
   return (
@@ -127,32 +134,43 @@ const LinkChildren = ({ navigation }) => {
 
         {/* 🏁 Display Search Results */}
         {searchResult && (
-          <View style={styles.resultContainer}>
-            <View style={styles.resultCard}>
-              <View style={styles.profileWrapper}>
-                <Image source={require('../images/account_circle.png')} style={styles.profileImage} />
-              </View>
+  <View style={styles.resultContainer}>
+    <TouchableOpacity 
+      onPress={() => navigation.navigate('ParentChatPage', { user: searchResult })}
+      style={styles.resultCard} // Wrap everything for full click effect
+    >
+      <View style={styles.profileWrapper}>
+        <Image source={require('../images/account_circle.png')} style={styles.profileImage} />
+      </View>
 
-              <View style={styles.resultTextContainer}>
-                <Text style={styles.resultName}>{searchResult.username}</Text>
-                <Text style={styles.resultInfo}>ID: {searchResult.idNumber}</Text>
-                <Text style={styles.resultInfo}>Course: {searchResult.course}</Text>
-              </View>
+      <View style={styles.resultTextContainer}>
+        <Text style={styles.resultName}>{searchResult.username}</Text>
+        <Text style={styles.resultInfo}>ID: {searchResult.idNumber}</Text>
+        <Text style={styles.resultInfo}>Course: {searchResult.course}</Text>
+      </View>
 
-              {/* 🔗 Toggle Link Button */}
-              <TouchableOpacity onPress={() => toggleStudentLink(searchResult)} style={styles.addButton}>
-                <Image
-                  source={
-                    linkedStudents.some((s) => s.id === searchResult.id) 
-                      ? require('../images/checked.png') // ✅ Linked
-                      : require('../images/add.png') // ➕ Not Linked
-                  }
-                  style={styles.addIcon}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+      {/* 🔗 Toggle Link Button */}
+      <TouchableOpacity 
+        onPress={(e) => {
+          e.stopPropagation(); // Prevent navigating when clicking the button
+          toggleStudentLink(searchResult);
+        }} 
+        style={styles.addButton}
+      >
+        <Image
+          source={
+            searchResult.isLinked
+              ? require('../images/checked.png') // ✅ If already linked
+              : require('../images/add.png') // ➕ If not linked
+          }
+          style={styles.addIcon}
+        />
+      </TouchableOpacity>
+      
+    </TouchableOpacity>
+  </View>
+)}
+
 
         {/* No Results */}
         {!searchResult && searchQuery !== '' && <Text style={styles.noResults}>No results found</Text>}

@@ -53,9 +53,10 @@ const LinkedParent = ({ navigation }) => {
 
         console.log("✅ Student Document ID:", studentDocId);
 
-        // 🔥 Fetch all linked parents inside the LinkedParent subcollection
+        // 🔥 Fetch all linked parents with 'accepted' status inside the LinkedParent subcollection
         const linkedParentRef = collection(db, "students", studentDocId, "LinkedParent");
-        const linkedParentSnapshot = await getDocs(linkedParentRef);
+        const qLinkedParents = query(linkedParentRef, where("status", "==", "accepted"));
+        const linkedParentSnapshot = await getDocs(qLinkedParents);
 
         const parents = linkedParentSnapshot.docs.map((doc) => ({
           id: doc.id,

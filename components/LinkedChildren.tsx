@@ -10,7 +10,7 @@ import {
   Alert,
 } from "react-native";
 import Toast from "react-native-toast-message";
-import { collection, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, doc, deleteDoc, query, where } from "firebase/firestore";
 import { auth, db } from "../components/firebase"; // Import auth to get logged-in user
 
 const LinkedChildren = ({ navigation }) => {
@@ -22,27 +22,30 @@ const LinkedChildren = ({ navigation }) => {
     const fetchLinkedStudents = async () => {
       setLoading(true);
       const user = auth.currentUser; // Get currently logged-in user
-
+  
       if (!user) {
         console.log("❌ No user logged in.");
         setLoading(false);
         return;
       }
-
+  
       setParentUid(user.uid); // Store parent UID
-
+  
       try {
         console.log("📌 Fetching linked students for parent UID:", user.uid);
-
+  
         // 🔥 Fetch linked students from the correct subcollection inside the logged-in parent's document
         const linkedStudentsRef = collection(db, `parent/${user.uid}/LinkedStudent`);
-        const linkedStudentsSnapshot = await getDocs(linkedStudentsRef);
-
+        
+        // Modify the query to include the status filter (status should be "accepted")
+        const studentsQuery = query(linkedStudentsRef, where("status", "==", "accepted"));
+        const linkedStudentsSnapshot = await getDocs(studentsQuery);
+  
         const students = linkedStudentsSnapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
-
+  
         console.log("✅ Retrieved Linked Students:", students);
         setLinkedStudents(students);
       } catch (error) {
@@ -51,9 +54,10 @@ const LinkedChildren = ({ navigation }) => {
         setLoading(false);
       }
     };
-
+  
     fetchLinkedStudents();
   }, []);
+  
 
   const unlinkStudent = async (studentId) => {
     Alert.alert("Confirm Unlink", "Are you sure you want to unlink this student?", [
