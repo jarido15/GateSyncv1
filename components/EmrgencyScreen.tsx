@@ -1,8 +1,9 @@
+/* eslint-disable quotes */
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, TextInput, Alert } from 'react-native';
 import { auth } from './firebase'; // Assuming firebase is initialized in this file
 import { db } from './firebase';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, getDocs, where, query, collection } from 'firebase/firestore';
 
 const EmergencyScreen = ({ navigation }) => {
   const [selectedReason, setSelectedReason] = useState('');
@@ -15,31 +16,48 @@ const EmergencyScreen = ({ navigation }) => {
       Alert.alert('Error', 'Please select a reason.');
       return;
     }
-
+  
     const reason = selectedReason === 'Other' ? customReason : selectedReason;
-
+  
     if (selectedReason === 'Other' && !customReason.trim()) {
       Alert.alert('Error', 'Please specify your custom reason.');
       return;
     }
-
+  
     try {
       const user = auth.currentUser;
       if (user) {
         const studentUid = user.uid; // Get the UID of the logged-in student
-
-        const emergencyData = {
-          reason: reason,
-          timestamp: serverTimestamp(),
-          status: 'Pending', // Set status to 'Pending'
-          studentUid: studentUid,
-        };
-
-        // Use setDoc to ensure the document UID matches the student's UID
-        await setDoc(doc(db, 'Emergency', studentUid), emergencyData);
-
-        Alert.alert('Success', `Submitted Reason: ${reason}`);
-        console.log('Submitted Reason:', reason);
+  
+        // Query the 'students' collection to find the document where the 'uid' field matches the studentUid
+        const studentQuery = query(collection(db, 'students'), where('uid', '==', studentUid));
+        const querySnapshot = await getDocs(studentQuery);
+  
+        if (!querySnapshot.empty) {
+          // If the query returned results, get the first document's data
+          const studentDoc = querySnapshot.docs[0];
+          const studentData = studentDoc.data();
+          const username = studentData.username || "Unknown User"; // Get the username from the document
+  
+          console.log("Fetched Username:", username); // Log the fetched username for debugging
+  
+          const emergencyData = {
+            username: username, // Save the username
+            reason: reason,
+            timestamp: serverTimestamp(),
+            status: 'Pending', // Set status to 'Pending'
+            studentUid: studentUid,
+          };
+  
+          // Use setDoc to ensure the document UID matches the student's UID
+          await setDoc(doc(db, 'Emergency', studentUid), emergencyData);
+  
+          Alert.alert('Success', `Submitted Reason: ${reason}`);
+          console.log('Submitted Reason:', reason);
+        } else {
+          console.error("No matching student found for studentUid:", studentUid);
+          Alert.alert('Error', 'No user data found in Firestore.');
+        }
       } else {
         Alert.alert('Error', 'No user is logged in.');
       }
@@ -48,7 +66,7 @@ const EmergencyScreen = ({ navigation }) => {
       Alert.alert('Error', 'Failed to submit the emergency reason.');
     }
   };
-
+  
   return (
     <View style={styles.container}>
       {/* Navigation Bar */}
