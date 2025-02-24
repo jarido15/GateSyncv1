@@ -19,21 +19,24 @@ const NotificationScreen = ({ navigation }) => {
             const user = auth.currentUser;
             if (user) {
                 console.log("Logged-in user UID:", user.uid); // Log the logged-in user's UID
-    
+        
                 // Query the students collection to find the document where the 'uid' field matches the logged-in user's UID
                 const studentsRef = collection(db, 'students');
                 const q = query(studentsRef, where('uid', '==', user.uid)); // Query to find the student document by UID
                 const querySnapshot = await getDocs(q);
-    
+        
                 if (!querySnapshot.empty) {
                     // Since the UID is inside the document, get the first matching document
                     const studentDoc = querySnapshot.docs[0];
                     console.log("Student document found:", studentDoc.data()); // Log the student document data
-    
+        
                     // Reference to the 'LinkedParent' subcollection within the student's document
                     const linkedParentCollectionRef = collection(studentDoc.ref, 'LinkedParent');
-                    const linkedParentSnapshot = await getDocs(linkedParentCollectionRef);
-    
+                    
+                    // Query for LinkedParent where action is 'requesting'
+                    const requestingQuery = query(linkedParentCollectionRef, where('action', '==', 'requesting'));
+                    const linkedParentSnapshot = await getDocs(requestingQuery);
+        
                     if (!linkedParentSnapshot.empty) {
                         const linkedParentArray = [];
                         linkedParentSnapshot.forEach((doc) => {
@@ -41,7 +44,7 @@ const NotificationScreen = ({ navigation }) => {
                         });
                         setLinkedParentData(linkedParentArray); // Set the LinkedParent data in the state
                     } else {
-                        console.log("No LinkedParent data found");
+                        console.log("No LinkedParent data with action 'requesting' found");
                     }
                 } else {
                     console.log("No student document found for UID:", user.uid); // Log if no student document was found
@@ -53,6 +56,7 @@ const NotificationScreen = ({ navigation }) => {
             console.error("Error fetching LinkedParent data:", error);
         }
     };
+    
     
     // Function to accept LinkedParent and update the status
     const acceptLinkedParent = async (linkedParentId) => {
@@ -144,7 +148,7 @@ const NotificationScreen = ({ navigation }) => {
             console.error("LinkedParent ID is not valid:", linkedParentId);
             return; // Exit the function early if the ID is invalid
         }
-
+    
         try {
             const user = auth.currentUser;
             if (user) {
@@ -152,15 +156,29 @@ const NotificationScreen = ({ navigation }) => {
                 const studentsRef = collection(db, 'students');
                 const q = query(studentsRef, where('uid', '==', user.uid));
                 const querySnapshot = await getDocs(q);
-
+    
                 if (!querySnapshot.empty) {
                     const studentDoc = querySnapshot.docs[0]; // Student document
-                    const linkedParentRef = doc(studentDoc.ref, 'LinkedParent', linkedParentId); // Reference to the specific LinkedParent document
-    
+                    
+                    // Reference to the specific LinkedParent document
+                    const linkedParentRef = doc(studentDoc.ref, 'LinkedParent', linkedParentId); 
+                    
                     // Delete the LinkedParent document
                     await deleteDoc(linkedParentRef);
                     console.log(`LinkedParent document with ID ${linkedParentId} deleted.`);
+    
+                    // Reference to the parent collection and the LinkedStudent subcollection
+                    const parentRef = doc(db, 'parent', linkedParentId);
+                    const linkedStudentsRef = collection(parentRef, 'LinkedStudent');
                     
+                    // Query LinkedStudent collection for matching document by UID
+                    const linkedStudentsSnapshot = await getDocs(query(linkedStudentsRef, where('uid', '==', user.uid)));
+                    if (!linkedStudentsSnapshot.empty) {
+                        const linkedStudentDoc = linkedStudentsSnapshot.docs[0]; // LinkedStudent document to delete
+                        await deleteDoc(linkedStudentDoc.ref); // Delete the document in LinkedStudent subcollection
+                        console.log(`LinkedStudent document with UID ${user.uid} deleted from parent's LinkedStudent subcollection.`);
+                    }
+    
                     // Re-fetch the updated LinkedParent data after deletion
                     fetchLinkedParentData();
                 } else {
@@ -173,6 +191,7 @@ const NotificationScreen = ({ navigation }) => {
             console.error('Error deleting LinkedParent:', error);
         }
     };
+    
 
     return (
         <>
@@ -428,7 +447,6 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         color: '#999',
-        marginTop: 20,
         top: '-30%',
         alignSelf: 'center',
     },
@@ -439,12 +457,12 @@ const styles = StyleSheet.create({
         marginVertical: 5,
     },
     linkedParentContainer: {
-        marginTop: 10,
-        padding: 15,
+        padding: 25,
         backgroundColor: '#f0f0f0',
         borderRadius: 10,
         top: '-30%',
-        height: '20%',
+        marginTop: 15,
+        height: 170,
     },
     linkedParentText: {
         fontSize: 16,
@@ -477,7 +495,7 @@ const styles = StyleSheet.create({
         height: 45,
         marginTop: 10,
         left: '55%',
-        top: '-45%',
+        top: -54,
         alignItems: 'center',
     },
     deleteButtonText: {

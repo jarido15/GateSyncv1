@@ -1,10 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
-import StudentDashboard from './StudentPage';  // Import StudentPage (if needed)
+import { onSnapshot, query, collection, where, doc, getDoc, getDocs } from 'firebase/firestore';
+import { auth, db } from './firebase'; // Import your Firebase config
 
 const MessageScreen = ({ navigation }) => {
-  // State to manage whether activities exist
-  const [hasActivities, setHasActivities] = useState(false);  // Set to 'true' if activities exist
+  const [hasActivities, setHasActivities] = useState(false);
+  const [activities, setActivities] = useState([]);
+
+  useEffect(() => {
+    const fetchActivities = async () => {
+      try {
+        const user = auth.currentUser;
+        if (user) {
+          // Get the logged-in student's uid from the 'students' collection
+          const studentsRef = collection(db, 'students');  // Reference to the 'students' collection
+          const q = query(studentsRef, where('uid', '==', user.uid));  // Query to find the student by uid
+          const querySnapshot = await getDocs(q);
+
+          if (!querySnapshot.empty) {
+            const studentDoc = querySnapshot.docs[0];  // Get the first document from the query
+            const studentData = studentDoc.data();
+            const userIdNumber = studentData?.idNumber; // Assuming 'idNumber' exists in the student document
+            console.log('Logged-in student ID:', userIdNumber); // Log the student idNumber
+
+            if (!userIdNumber) {
+              console.log('User does not have a valid idNumber.');
+              return;  // If no idNumber, exit the function
+            }
+
+            // Query the scanned_ids collection for documents with matching idNumber
+            const scannedIdsRef = collection(db, 'scanned_ids');
+            const q = query(scannedIdsRef, where('idNumber', '==', userIdNumber));
+
+            // Listen for real-time updates
+            const unsubscribe = onSnapshot(q, (querySnapshot) => {
+              if (!querySnapshot.empty) {
+                const fetchedActivities = querySnapshot.docs.map(doc => {
+                  const data = doc.data();
+                  console.log('Fetched activity doc data:', data);  // Log the document data
+
+                  // Check if timestamp is a valid string and format it correctly
+                  const timestamp = data.timestamp;
+                  let formattedTimestamp = 'Invalid timestamp';
+                  
+                  // Check if the timestamp string matches the expected format
+                  if (timestamp && !isNaN(Date.parse(timestamp))) {
+                    const date = new Date(timestamp);
+                    formattedTimestamp = date.toLocaleString();  // Format the date
+                  }
+
+                  return {
+                    description: data.description,
+                    timestamp: formattedTimestamp,  // Safely format the timestamp
+                    status: data.status,
+                  };
+                });
+                console.log('Fetched activities:', fetchedActivities);  // Log the fetched activities
+                setActivities(fetchedActivities);  // Store fetched activities
+                setHasActivities(true);  // Set the flag that activities exist
+              } else {
+                console.log('No activities found for this user.');  // Log if no activities were found
+                setActivities([]); // Clear the activities list
+                setHasActivities(false);  // No activities found
+              }
+            });
+
+            // Clean up the listener when the component is unmounted
+            return () => unsubscribe();
+          } else {
+            console.log('No student data found for the logged-in user.');
+          }
+        } else {
+          console.log('No user is logged in.');
+        }
+      } catch (error) {
+        console.error('Error fetching activities:', error);
+      }
+    };
+
+    fetchActivities();  // Call the function when component mounts
+  }, []);  // Empty dependency array means this runs only once when the component mounts
 
   return (
     <>
@@ -29,7 +104,7 @@ const MessageScreen = ({ navigation }) => {
 
         <View style={styles.content}>
           <Text style={styles.welcomeText}>Activity Logs</Text>
-          
+
           {/* Conditionally render the "No activities" container */}
           {!hasActivities ? (
             <View style={styles.noActivitiesContainer}>
@@ -37,7 +112,12 @@ const MessageScreen = ({ navigation }) => {
             </View>
           ) : (
             // Render activities here if hasActivities is true
-            <Text style={styles.activityText}>Activities exist</Text>
+            activities.map((activity, index) => (
+              <View key={index} style={styles.activityContainer}>
+                <Text style={styles.timestampText}>Scan Time: {activity.timestamp}</Text>
+                <Text style={styles.statusText}>Status: {activity.status}</Text>
+              </View>
+            ))
           )}
         </View>
       </ScrollView>
@@ -54,11 +134,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#BCE5FF', // Background color for the navigation bar
+    backgroundColor: '#BCE5FF',
     paddingVertical: 10,
     paddingHorizontal: 15,
-    elevation: 5, // Shadow for Android
-    shadowColor: '#000', // Shadow for iOS
+    elevation: 5,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -68,73 +148,75 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: {
-    width: 35, // Adjust logo size
-    height: 34, // Adjust logo size
-    resizeMode: 'contain', // Keep the aspect ratio of the logo
-    marginRight: 10, // Space between logo and text
-    shadowColor: '#000', // Shadow color (iOS)
-    shadowOffset: { width: 0, height: 2 }, // Shadow offset (iOS)
-    shadowOpacity: 0.3, // Shadow opacity (iOS)
-    shadowRadius: 4, // Shadow radius (iOS)
-    elevation: 5, // Shadow for Android
+    width: 35,
+    height: 34,
+    resizeMode: 'contain',
+    marginRight: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
     left: '-60%',
   },
   gatesync: {
-    width: 100, // Adjust logo size
-    height: 34, // Adjust logo size
-    top: 5, 
-    resizeMode: 'contain', // Keep the aspect ratio of the logo
-    marginRight: 10, // Space between logo and text
-    shadowColor: '#000', // Shadow color (iOS)
-    shadowOffset: { width: 0, height: 2 }, // Shadow offset (iOS)
-    shadowOpacity: 0.3, // Shadow opacity (iOS)
-    shadowRadius: 4, // Shadow radius (iOS)
-    elevation: 5, // Shadow for Android
+    width: 100,
+    height: 34,
+    top: 5,
+    resizeMode: 'contain',
+    marginRight: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
     left: '-60%',
   },
   back: {
-    width: 30, // Adjust menu icon size
-    height: 30, // Adjust menu icon size
+    width: 30,
+    height: 30,
     resizeMode: 'contain',
-  },
-  navbarText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff', // Text color
-  },
-  profileIcon: {
-    width: 30, // Adjust profile icon size
-    height: 30, // Adjust profile icon size
-    resizeMode: 'contain',
-  },
-  content: {
-    marginTop: 20,
-    padding: 20,
   },
   welcomeText: {
     fontSize: 36,
     fontWeight: '800',
     fontFamily: 'Kanit',
     color: '#5394F2',
-    top: -40,
+    top: '10%',
   },
   noActivitiesContainer: {
-    backgroundColor: '#FFCCCB', // Light red background to highlight "No activities"
+    backgroundColor: '#FFCCCB',
     padding: 15,
     borderRadius: 10,
-    marginTop: -10,
+    marginTop: 30,
     alignItems: 'center',
   },
   noActivitiesText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#FF4C4C', // Red text color to show the message
+    color: '#FF4C4C',
   },
-  activityText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#4CAF50', // Green color for "Activities exist"
-    marginTop: 20,
+  timestampText: {
+    fontSize: 16,
+    color: '#888',
+    marginTop: 5,
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 5,
+  },
+  activityContainer: {
+    marginTop: 30,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: '#BCE5FF',
+    marginBottom: 10,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    width: '90%',
+    alignSelf: 'center',
   },
 });
 

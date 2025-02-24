@@ -1,6 +1,6 @@
 /* eslint-disable react-native/no-inline-styles */
 /* eslint-disable react/no-unstable-nested-components */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -33,6 +33,10 @@ import LinkChildren from './components/LinkChildren';
 import LinkedChildren from './components/LinkedChildren';
 import ScheduleScreen from './components/ScheduleScreen';
 import Myschedule from './components/Myschedule';
+
+import messaging from '@react-native-firebase/messaging';
+import { app } from './components/firebase';  // Correctly import the app
+
 
 // Create Stack and Tab Navigators
 const Stack = createStackNavigator();
@@ -160,6 +164,29 @@ const ParentPageTabs = () => (
 
 // Main App Component
 const App = () => {
+  useEffect(() => {
+    if (app) {
+      console.log('Firebase Initialized!');
+      
+      async function requestUserPermission() {
+        const authStatus = await messaging().requestPermission();
+        const enabled =
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+  
+        if (enabled) {
+          console.log('Notification permission granted');
+        } else {
+          console.log('Notification permission denied');
+        }
+      }
+  
+      requestUserPermission();
+    } else {
+      console.log('Firebase not initialized!');
+    }
+  }, []);
+  
   return (
     <SafeAreaProvider>
       <NavigationContainer>

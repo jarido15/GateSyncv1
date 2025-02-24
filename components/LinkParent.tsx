@@ -104,6 +104,9 @@ const LinkedParent = ({ navigation }) => {
   
         setLinkedParents((prev) => prev.filter((p) => p.id !== parent.id));
         Toast.show({ type: 'info', text1: 'Parent Unlinked' });
+  
+        // Add notification for unlinking the parent
+        await addNotification('Unlinked', studentData, parent);
       } else {
         // Set the status to "Pending" when linking
         const linkedParentData = {
@@ -127,18 +130,47 @@ const LinkedParent = ({ navigation }) => {
         await setDoc(linkedParentRef, linkedParentData);
         await setDoc(linkedStudentRef, linkedStudentData);
   
+        // Update action field to 'active' once linked
+        await setDoc(linkedStudentRef, { action: 'active' }, { merge: true });
+
         setLinkedParents((prev) => [...prev, parent]);
         Toast.show({ type: 'success', text1: 'Parent Linked Successfully (Pending)' });
-
+  
         // Send Push Notification to Parent
         sendPushNotification(parent);
+  
+        // Add notification for linking the parent
+        await addNotification('Linked', studentData, parent);
       }
     } catch (error) {
       console.error('❌ Error updating linked parent:', error);
       Toast.show({ type: 'error', text1: 'Error linking parent' });
     }
-  };
+};
 
+  // Add a function to save the notification in Firestore
+  const addNotification = async (action, studentData, parent) => {
+    try {
+      const notificationData = {
+        action,
+        idNumber: studentData.idNumber,
+        studentName: studentData.username,
+        uid: parent.uid,
+        parentName: parent.username,
+        timestamp: new Date(),
+        status: action === 'Linked' ? 'Pending' : 'Unlinked',
+      };
+  
+      // Save the notification in Firestore under 'notifications' collection
+      await setDoc(doc(db, 'notifications', `${studentData.uid}_${parent.id}_${Date.now()}`), notificationData);
+  
+      console.log('Notification saved:', notificationData);
+    } catch (error) {
+      console.error('❌ Error adding notification:', error);
+      Toast.show({ type: 'error', text1: 'Error adding notification' });
+    }
+  };
+  
   // Send Push Notification
   const sendPushNotification = async (parent) => {
     try {

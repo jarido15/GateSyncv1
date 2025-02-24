@@ -1,9 +1,10 @@
+/* eslint-disable no-trailing-spaces */
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, TextInput 
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../components/firebase';
 import { getAuth } from 'firebase/auth';
 
@@ -57,6 +58,16 @@ const LinkChildren = ({ navigation }) => {
     }
   
     try {
+      // Fetch parent data
+      const parentDocRef = doc(db, 'parent', parentUid);
+      const parentDocSnap = await getDoc(parentDocRef);
+      const parentData = parentDocSnap.exists() ? parentDocSnap.data() : null;
+  
+      if (!parentData) {
+        Toast.show({ type: 'error', text1: 'Parent data not found' });
+        return;
+      }
+  
       const linkedStudentRef = doc(db, 'parent', parentUid, 'LinkedStudent', student.id);
       const linkedParentRef = doc(db, 'students', student.id, 'LinkedParent', parentUid);
   
@@ -65,34 +76,40 @@ const LinkChildren = ({ navigation }) => {
       const alreadyLinked = linkedStudentsSnapshot.docs.some((doc) => doc.id === student.id);
   
       if (alreadyLinked) {
-        // ❌ Unlink Student
+        // Unlink Student
         await deleteDoc(linkedStudentRef);
         await deleteDoc(linkedParentRef);
   
         setLinkedStudents((prev) => prev.filter((s) => s.id !== student.id));
-        setSearchResult((prev) => prev ? { ...prev, isLinked: false } : null); // Update UI
+        setSearchResult((prev) => prev ? { ...prev, isLinked: false } : null);
   
         Toast.show({ type: 'info', text1: 'Student Unlinked' });
       } else {
-        // ✅ Link Student and set status to "Pending"
+        // Link Student and set status to "Pending"
         await setDoc(linkedStudentRef, {
           username: student.username,
           idNumber: student.idNumber,
           course: student.course,
           yearLevel: student.yearLevel,
           uid: student.uid,
-          status: 'Pending', // Set status to "Pending"
+          status: 'Pending',
         });
   
         await setDoc(linkedParentRef, {
-          username: auth.currentUser.displayName || 'Parent',
+          username: parentData.username || 'Parent',
+          contactNumber: parentData.contactNumber || 'Parent',
           email: auth.currentUser.email,
           uid: parentUid,
-          status: 'Pending', // Set status to "Pending"
+          status: 'Pending',
+        });
+  
+        // Set action field to "requesting"
+        await updateDoc(linkedParentRef, {
+          action: 'requesting',
         });
   
         setLinkedStudents((prev) => [...prev, student]);
-        setSearchResult((prev) => prev ? { ...prev, isLinked: true } : null); // Update UI
+        setSearchResult((prev) => prev ? { ...prev, isLinked: true } : null);
   
         Toast.show({ type: 'success', text1: 'Student Linked Successfully with Pending Status' });
       }
@@ -102,9 +119,8 @@ const LinkChildren = ({ navigation }) => {
     }
   };
   
-  
 
-  
+
   return (
     <>
       <ScrollView style={styles.container}>

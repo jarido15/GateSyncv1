@@ -1,4 +1,3 @@
-/* eslint-disable no-trailing-spaces */
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
@@ -18,9 +17,10 @@ const ParentUpdate = ({ navigation }) => {
         if (currentUserUID) {
             const fetchLinkedStudents = async () => {
                 try {
-                    // Query the linked students for the current parent
+                    // Query the linked students for the current parent where action is 'active'
                     const q = query(
-                        collection(db, 'parent', currentUserUID, 'LinkedStudent')
+                        collection(db, 'parent', currentUserUID, 'LinkedStudent'),
+                        where('action', '==', 'active')  // Only fetch students with action field set to 'active'
                     );
                     const linkedStudentsSnapshot = await getDocs(q);
     
@@ -30,7 +30,7 @@ const ParentUpdate = ({ navigation }) => {
                         ...doc.data(),
                     }));
     
-                    setLinkedStudents(students);  // Set the linked students without notifications
+                    setLinkedStudents(students);  // Set the linked students that are active
                 } catch (error) {
                     console.error('Error fetching linked students: ', error);
                 }
@@ -39,6 +39,7 @@ const ParentUpdate = ({ navigation }) => {
             fetchLinkedStudents();
         }
     }, [currentUserUID]);
+    
     
 
     const openMenu = () => {
@@ -134,18 +135,39 @@ const ParentUpdate = ({ navigation }) => {
     
     const handleDelete = async (studentId) => {
         try {
-            // Delete the LinkedStudent entry
+            // Step 1: Delete the LinkedStudent entry inside the parent's collection
             const studentRef = doc(db, 'parent', currentUserUID, 'LinkedStudent', studentId);
             await deleteDoc(studentRef);
-
-            // Update state to remove the deleted student
+    
+            // Step 2: Find and delete the corresponding LinkedParent entry inside the students collection
+            const studentDocRef = doc(db, 'students', studentId);
+            const studentDocSnap = await getDoc(studentDocRef);
+    
+            if (studentDocSnap.exists()) {
+                const studentData = studentDocSnap.data();
+                
+                // Find the LinkedParent document where the uid matches
+                const linkedParentRef = collection(db, 'students', studentId, 'LinkedParent');
+                const linkedParentSnapshot = await getDocs(query(linkedParentRef, where('uid', '==', studentData.uid)));
+    
+                // If a matching LinkedParent document is found, delete it
+                if (!linkedParentSnapshot.empty) {
+                    const linkedParentDoc = linkedParentSnapshot.docs[0];
+                    await deleteDoc(linkedParentDoc.ref);
+                    console.log(`LinkedParent document with UID ${studentData.uid} deleted from students collection.`);
+                }
+            }
+    
+            // Step 3: Update state to remove the deleted student from the linked list
             setLinkedStudents(prevState =>
                 prevState.filter(student => student.id !== studentId)
             );
+    
         } catch (error) {
             console.error('Error deleting student: ', error);
         }
     };
+    
 
     return (
         <>
@@ -234,7 +256,7 @@ const ParentUpdate = ({ navigation }) => {
                             <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
                                 <Text style={styles.menuOptionText}>Settings</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => navigateToPage('StudentLogin')} style={styles.menuOption}>
+                            <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
                                 <Text style={styles.menuOptionText}>Logout</Text>
                             </TouchableOpacity>
                         </View>
@@ -428,3 +450,4 @@ const styles = StyleSheet.create({
 });
 
 export default ParentUpdate;
+
