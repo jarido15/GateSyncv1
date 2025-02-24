@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, StatusBar, NativeModules, 
-  Platform, InteractionManager 
+  Platform, InteractionManager, AppState 
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import QRCode from 'react-native-qrcode-svg';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { useFocusEffect } from '@react-navigation/native';
+import Toast from 'react-native-toast-message'; // Import the Toast component
 
 const ViewQRPage = ({ navigation }) => {
   const [qrData, setQrData] = useState('');
@@ -64,10 +65,16 @@ const ViewQRPage = ({ navigation }) => {
         try {
           console.log('Enabling secure mode...');
           NativeModules.PreventScreenshotModule.enableSecureMode();
+          Toast.show({
+            type: 'success',
+            text1: 'Screenshot prevention is enabled',
+            position: 'bottom',
+            visibilityTime: 2000,
+          });
         } catch (error) {
           console.error('Failed to enable screenshot restriction:', error);
         }
-      }, 3000); // ✅ Delayed to prevent crashes
+      }, 3000); // Delay to prevent app crashes on initial render
 
       return () => {
         clearTimeout(timer);
@@ -75,34 +82,56 @@ const ViewQRPage = ({ navigation }) => {
           try {
             console.log('Disabling secure mode...');
             NativeModules.PreventScreenshotModule.disableSecureMode();
+            Toast.show({
+              type: 'success',
+              text1: 'Screenshot prevention is disabled',
+              position: 'bottom',
+              visibilityTime: 2000,
+            });
           } catch (error) {
             console.error('Failed to disable screenshot restriction:', error);
           }
         }
       };
     }
+
+    // iOS: Prevent the content from appearing in the task switcher
+    const appStateListener = AppState.addEventListener('change', nextAppState => {
+      if (nextAppState === 'background') {
+        console.log('App moved to background (possible screenshot prevention)');
+      }
+    });
+
+    return () => {
+      appStateListener.remove();
+    };
   }, []);
 
   return (
-    <LinearGradient colors={['#FFFFFF', '#84B4FC']} style={styles.container}>
-      <StatusBar backgroundColor="#FFF" barStyle="light-content" />
-      <LinearGradient colors={['#82D8FF', '#0040FF']} style={styles.contentContainer}>
-        <View style={styles.Square}>
-          {loading ? (
-            <Text>Loading QR Code...</Text>
-          ) : qrData ? (
-            <QRCode value={qrData} size={200} />
-          ) : (
-            <Text>No QR Code Available</Text>
-          )}
-        </View>
-        <Text style={styles.title}>Scan your entry code</Text>
+    <>
+      <LinearGradient colors={['#FFFFFF', '#84B4FC']} style={styles.container}>
+        <StatusBar backgroundColor="#FFF" barStyle="light-content" />
+        <LinearGradient colors={['#82D8FF', '#0040FF']} style={styles.contentContainer}>
+          <View style={styles.Square}>
+            {loading ? (
+              <Text>Loading QR Code...</Text>
+            ) : qrData ? (
+              <QRCode value={qrData} size={200} />
+            ) : (
+              <Text>No QR Code Available</Text>
+            )}
+          </View>
+          <Text style={styles.title}>Scan your entry code</Text>
+        </LinearGradient>
+
+        <TouchableOpacity style={styles.Button} onPress={() => navigation.navigate('StudentPage')}>
+          <Text style={styles.return}>Dashboard</Text>
+        </TouchableOpacity>
       </LinearGradient>
 
-      <TouchableOpacity style={styles.Button} onPress={() => navigation.navigate('StudentPage')}>
-        <Text style={styles.return}>Dashboard</Text>
-      </TouchableOpacity>
-    </LinearGradient>
+      {/* Toast component */}
+      <Toast />
+    </>
   );
 };
 

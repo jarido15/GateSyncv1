@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
   },
   messageText: {
-    color: 'white',
+    color: 'black',
     fontSize: 16,
   },
   inputContainer: {

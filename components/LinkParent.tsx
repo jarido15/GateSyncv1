@@ -3,9 +3,10 @@ import {
   View, Text, StyleSheet, Image, TouchableOpacity, TextInput, FlatList 
 } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { collection, query, where, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../components/firebase';
 import { getAuth } from 'firebase/auth';
+import messaging from '@react-native-firebase/messaging';
 
 const LinkedParent = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -128,14 +129,42 @@ const LinkedParent = ({ navigation }) => {
   
         setLinkedParents((prev) => [...prev, parent]);
         Toast.show({ type: 'success', text1: 'Parent Linked Successfully (Pending)' });
+
+        // Send Push Notification to Parent
+        sendPushNotification(parent);
       }
     } catch (error) {
       console.error('❌ Error updating linked parent:', error);
       Toast.show({ type: 'error', text1: 'Error linking parent' });
     }
   };
-  
 
+  // Send Push Notification
+  const sendPushNotification = async (parent) => {
+    try {
+      // Fetch the parent's device token (assuming it's stored in Firestore)
+      const parentDoc = await getDoc(doc(db, 'parent', parent.id));
+      const parentData = parentDoc.data();
+      const deviceToken = parentData.deviceToken; // Store the token when the parent registers for push notifications
+
+      // Send a notification using Firebase Cloud Messaging
+      if (deviceToken) {
+        await messaging().sendToDevice(deviceToken, {
+          notification: {
+            title: 'Parent Link Notification',
+            body: `Your link request with ${auth.currentUser.displayName} is now Pending.`,
+          },
+          data: {
+            click_action: 'FLUTTER_NOTIFICATION_CLICK',
+          },
+        });
+        Toast.show({ type: 'success', text1: 'Push Notification Sent' });
+      }
+    } catch (error) {
+      console.error('❌ Error sending push notification:', error);
+      Toast.show({ type: 'error', text1: 'Failed to send notification' });
+    }
+  };
 
   return (
     <>
@@ -174,7 +203,7 @@ const LinkedParent = ({ navigation }) => {
             <View style={styles.messagecontainer}>
               <TouchableOpacity
                 onPress={() => navigation.navigate('ChatPage', { user: item })}
-                style={styles.resultCard} // Wrap everything for full click effect
+                style={styles.resultCard}
               >
                 <View style={styles.profileWrapper}>
                   <Image source={require('../images/account_circle.png')} style={styles.chatIcon} />
@@ -195,8 +224,8 @@ const LinkedParent = ({ navigation }) => {
                   <Image
                     source={
                       isLinked
-                        ? require('../images/checked.png') // ✅ If already linked
-                        : require('../images/add.png') // ➕ If not linked
+                        ? require('../images/checked.png')
+                        : require('../images/add.png')
                     }
                     style={styles.addicon}
                   />
@@ -207,10 +236,9 @@ const LinkedParent = ({ navigation }) => {
           );
         }}
         ListEmptyComponent={() => <Text style={styles.noResults}>No results found</Text>}
-        />
+      />
         
-        <Toast />
-        
+      <Toast />
     </>
   );
 };
