@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { auth, db } from './firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
+import { auth, db } from './firebase'; // Ensure Firebase is correctly imported
+
 
 const ParentSignup = ({ navigation }) => {
     const [username, setUsername] = useState('');
@@ -16,28 +17,31 @@ const ParentSignup = ({ navigation }) => {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
-
+    
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-
-            // Store user data in Firestore using the UID as the document ID
+    
+            // Send email verification
+            await sendEmailVerification(user);
+            Alert.alert('Verification Email Sent', 'Please check your inbox to verify your email address.');
+    
+            // Store user data in Firestore using UID as the document ID
             await setDoc(doc(db, 'parent', user.uid), {
                 username,
                 email,
                 contactNumber,
-                uid: user.uid, // Store UID
+                uid: user.uid,
                 createdAt: new Date().toISOString(),
             });
-
-            Alert.alert('Success', `Welcome, ${username}!`);
+    
+            Alert.alert('Success', `Welcome, ${username}! Please verify your email before logging in.`);
             navigation.navigate('ParentLogin');
         } catch (error) {
             Alert.alert('Signup Failed', error.message);
             console.error('Error signing up:', error);
         }
     };
-
     return (
         <View style={styles.container}>
             <View style={styles.bluecircle} />

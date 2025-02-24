@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, Image, Modal, Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Platform } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import { createUserWithEmailAndPassword } from 'firebase/auth'; // Firebase Auth
-import { db, auth } from './firebase'; // Firebase Auth and Firestore
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { auth, db } from './firebase';
 import { collection, addDoc } from 'firebase/firestore'; // Firestore
 import QRCode from 'react-native-qrcode-svg'; // QR Code Library
 import { Picker } from '@react-native-picker/picker'; // Import Picker
@@ -17,47 +17,46 @@ const StudentSignup = ({ navigation }) => {
     const [isModalVisible, setModalVisible] = useState(false);
     const [qrData, setQrData] = useState(''); // For storing QR code data
 
-  const handleSignup = async () => {
-    // Validate fields
-    if (!username || !email || !password || !idNumber || !yearLevel || !course) {
-        Alert.alert('Error', 'Please fill in all fields');
-        return;
-    }
-
-    try {
-        // Step 1: Create the user in Firebase Auth
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        // Step 2: Send a verification email
-        await user.sendEmailVerification();
-
-        // Inform the user to check their email
-        Alert.alert('Verification Email Sent', 'Please check your inbox to verify your email address.');
-
-        // Step 3: Prepare QR code data (e.g., ID number or unique identifier)
-        const qrDataString = `${username}-${idNumber}`; // Example: "JohnDoe-123456"
-        setQrData(qrDataString);
-
-        // Step 4: Save user details and QR code data to Firestore (with 'uid')
-        await addDoc(collection(db, 'students'), {
-            username,
-            email,
-            idNumber,
-            yearLevel,
-            course,
-            qrData: qrDataString, // Save QR code data
-            uid: user.uid, // Store the signed-in user's UID
-        });
-
-        // Step 5: Show success modal
-        setModalVisible(true);
-    } catch (error) {
-        console.error('Error signing up:', error.message);
-        Alert.alert('Error', 'An error occurred while signing up. Please try again.');
-    }
-};
-
+    const handleSignup = async () => {
+        // Validate fields
+        if (!username || !email || !password || !idNumber || !yearLevel || !course) {
+            Alert.alert('Error', 'Please fill in all fields');
+            return;
+        }
+    
+        try {
+            // Step 1: Create the user in Firebase Auth
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+    
+            // Step 2: Send a verification email
+            if (user) {
+                await sendEmailVerification(user);
+                Alert.alert('Verification Email Sent', 'Please check your inbox to verify your email address.');
+            }
+    
+            // Step 3: Prepare QR code data (e.g., ID number or unique identifier)
+            const qrDataString = `${username}-${idNumber}`;
+            setQrData(qrDataString);
+    
+            // Step 4: Save user details and QR code data to Firestore (with 'uid')
+            await addDoc(collection(db, 'students'), {
+                username,
+                email,
+                idNumber,
+                yearLevel,
+                course,
+                qrData: qrDataString,
+                uid: user.uid, // Store the signed-in user's UID
+            });
+    
+            // Step 5: Show success modal
+            setModalVisible(true);
+        } catch (error) {
+            console.error('Error signing up:', error.message);
+            Alert.alert('Error', 'An error occurred while signing up. Please try again.');
+        }
+    };
 
     return (
         <KeyboardAvoidingView
@@ -119,6 +118,7 @@ const StudentSignup = ({ navigation }) => {
                                     value={yearLevel}
                                     onChangeText={setYearLevel}
                                     placeholderTextColor={'#686D76'}
+                                    keyboardType='numeric'
                                 />
                             </View>
                         </View>
