@@ -99,7 +99,9 @@ const StudentLogin = ({ navigation }) => {
         <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Login</Text>
       </TouchableOpacity>
+      <TouchableOpacity onPress={ ()=> navigation.navigate('ForgotPassword')}>
       <Text style={styles.forgotpassword}>Forgot Password</Text>
+      </TouchableOpacity>
       </KeyboardAvoidingView>
 
       <Text style={styles.haveacc}>Don't have an account?</Text>

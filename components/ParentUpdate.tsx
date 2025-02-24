@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
-import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, deleteDoc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../components/firebase'; // Your Firebase Firestore setup
 import { getAuth } from 'firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
@@ -42,27 +42,28 @@ const ParentUpdate = ({ navigation }) => {
     
     
 
-    const openMenu = () => {
-        setMenuVisible(true); // Show the modal
-        Animated.timing(slideAnim, {
-            toValue: 0, // Slide into the screen from the left
-            duration: 300,
-            useNativeDriver: true,
-        }).start();
-    };
-
-    const closeMenu = () => {
-        Animated.timing(slideAnim, {
-            toValue: -400, // Slide back off-screen to the left
-            duration: 300,
-            useNativeDriver: true,
-        }).start(() => setMenuVisible(false)); // Hide modal after animation
-    };
-
-    const navigateToPage = (page) => {
-        setMenuVisible(false); // Close the menu
-        navigation.navigate(page); // Navigate to the selected page
-    };
+ 
+     const openMenu = () => {
+         setMenuVisible(true); // Show the menu modal
+         Animated.timing(slideAnim, {
+             toValue: 0, // Slide the menu into the screen from the left
+             duration: 300,
+             useNativeDriver: true,
+         }).start();
+     };
+ 
+     const closeMenu = () => {
+         Animated.timing(slideAnim, {
+             toValue: -400, // Slide the menu back off-screen to the left
+             duration: 300,
+             useNativeDriver: true,
+         }).start(() => setMenuVisible(false)); // Hide the modal after the animation
+     };
+ 
+     const navigateToPage = (page) => {
+         setMenuVisible(false); // Close the menu
+         navigation.navigate(page); // Navigate to the selected page
+     };
 
     const handleAccept = async (studentId, studentUID) => {
         try {
@@ -139,22 +140,23 @@ const ParentUpdate = ({ navigation }) => {
             const studentRef = doc(db, 'parent', currentUserUID, 'LinkedStudent', studentId);
             await deleteDoc(studentRef);
     
-            // Step 2: Find and delete the corresponding LinkedParent entry inside the students collection
+            // Step 2: Find and delete the corresponding LinkedParent entries inside the students collection
             const studentDocRef = doc(db, 'students', studentId);
             const studentDocSnap = await getDoc(studentDocRef);
     
             if (studentDocSnap.exists()) {
                 const studentData = studentDocSnap.data();
                 
-                // Find the LinkedParent document where the uid matches
+                // Query the LinkedParent subcollection for this student
                 const linkedParentRef = collection(db, 'students', studentId, 'LinkedParent');
-                const linkedParentSnapshot = await getDocs(query(linkedParentRef, where('uid', '==', studentData.uid)));
+                const linkedParentSnapshot = await getDocs(linkedParentRef);
     
-                // If a matching LinkedParent document is found, delete it
+                // If there are any documents in the LinkedParent subcollection, delete each one
                 if (!linkedParentSnapshot.empty) {
-                    const linkedParentDoc = linkedParentSnapshot.docs[0];
-                    await deleteDoc(linkedParentDoc.ref);
-                    console.log(`LinkedParent document with UID ${studentData.uid} deleted from students collection.`);
+                    linkedParentSnapshot.forEach(async (linkedParentDoc) => {
+                        await deleteDoc(linkedParentDoc.ref); // Delete each LinkedParent document
+                        console.log(`LinkedParent document deleted from students collection.`);
+                    });
                 }
             }
     
@@ -171,7 +173,7 @@ const ParentUpdate = ({ navigation }) => {
 
     return (
         <>
-            <ScrollView style={styles.container}>
+            
                 <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
                 <View style={styles.navbar}>
                     <TouchableOpacity onPress={openMenu}>
@@ -188,7 +190,7 @@ const ParentUpdate = ({ navigation }) => {
                         <Image source={require('../images/GateSync.png')} style={styles.gatesync} />
                     </View>
                 </View>
-
+                <ScrollView style={styles.container}>
                 <View style={styles.content}>
                     <LinearGradient colors={['#6B9BFA', '#0056FF']} style={styles.notif} />
                     <Image source={require('../images/Updates.png')} style={styles.notificon} />
@@ -196,7 +198,7 @@ const ParentUpdate = ({ navigation }) => {
                     <Text style={styles.noitfText}>List</Text>
                     {/* Conditionally render the No Notifications message or the notifications list */}
                     {notifications.length === 0 ? (
-                        <Text style={styles.noNotificationText}>No Notifications</Text>
+                        <Text style={styles.noNotificationText}> </Text>
                     ) : (
                         notifications.map((notif, index) => (
                             <Text key={index} style={styles.notificationText}>
@@ -206,27 +208,28 @@ const ParentUpdate = ({ navigation }) => {
                     )}
 
                     <View style={styles.linkedStudentsContainer}>
-                        <Text style={styles.sectionTitle}>Linked Students</Text>
+                        <Text style={styles.sectionTitle}> </Text>
                         {linkedStudents.length === 0 ? (
-                            <Text style={styles.noNotificationText}>No Linked Students</Text>
+                            <Text style={styles.noNotificationText}> </Text>
                         ) : (
                             linkedStudents.map(student => (
-                                <View key={student.id} style={styles.studentItem}>
-                                    <Text style={styles.studentName}>{student.username}</Text>
-                                    <Text style={styles.studentStatus}>Status: {student.status}</Text>
+                                <View key={student.id} style={styles.linkedParentContainer}>
+                                    <Text style={styles.linkedParentText}>{student.username}</Text>
+                                    <Text style={styles.linkedParentText}>Course: {student.course}</Text>
+                                    <Text style={styles.linkedParentText}>Status: {student.status}</Text>
                                     {student.status !== 'accepted' && (
                                         <View style={styles.studentButtons}>
                                             <TouchableOpacity
                                                 onPress={() => handleAccept(student.id, student.uid)}
                                                 style={styles.acceptButton}
                                             >
-                                                <Text style={styles.buttonText}>Accept</Text>
+                                                <Text style={styles. acceptButtonText}>Accept</Text>
                                             </TouchableOpacity>
                                             <TouchableOpacity
                                                 onPress={() => handleDelete(student.id)}
                                                 style={styles.deleteButton}
                                             >
-                                                <Text style={styles.buttonText}>Delete</Text>
+                                                <Text style={styles.  deleteButtonText}>Delete</Text>
                                             </TouchableOpacity>
                                         </View>
                                     )}
@@ -237,32 +240,27 @@ const ParentUpdate = ({ navigation }) => {
                 </View>
             </ScrollView>
 
-            <Modal
-                visible={menuVisible}
-                animationType="none"
-                transparent={true}
-                onRequestClose={closeMenu}
-            >
-                <View style={styles.modalContainer}>
+           <Modal visible={menuVisible} transparent={true} animationType="none" onRequestClose={closeMenu}>
+                  <View style={styles.modalContainer}>
                     <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
-                    <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]} >
-                        <View style={styles.menu}>
-                            <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
-                                <Text style={styles.closeButtonText}>X</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
-                                <Text style={styles.menuOptionText}>Linked Children</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
-                                <Text style={styles.menuOptionText}>Settings</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
-                                <Text style={styles.menuOptionText}>Logout</Text>
-                            </TouchableOpacity>
-                        </View>
+                    <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]}>
+                      <View style={styles.menu}>
+                        <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
+                          <Text style={styles.closeButtonText}>X</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
+                          <Text style={styles.menuOptionText}>Linked Children</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => navigateToPage('ParentProfile')} style={styles.menuOption}>
+                          <Text style={styles.menuOptionText}>Profile</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
+                          <Text style={styles.menuOptionText}>Logout</Text>
+                        </TouchableOpacity>
+                      </View>
                     </Animated.View>
-                </View>
-            </Modal>
+                  </View>
+                </Modal>
         </>
     );
 };
@@ -299,7 +297,7 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3, // Shadow opacity (iOS)
         shadowRadius: 4, // Shadow radius (iOS)
         elevation: 5, // Shadow for Android
-        left: '-60%',
+        left: '-67%',
     },
     gatesync: {
         width: 100, // Adjust logo size
@@ -312,21 +310,84 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3, // Shadow opacity (iOS)
         shadowRadius: 4, // Shadow radius (iOS)
         elevation: 5, // Shadow for Android
-        left: '-60%',
+        left: '-67%',
     },
     menuIcon: {
         width: 30, // Adjust menu icon size
         height: 30, // Adjust menu icon size
         resizeMode: 'contain',
     },
+    navbarText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#fff', // Text color
+    },
+    profileIcon: {
+        width: 30, // Adjust profile icon size
+        height: 30, // Adjust profile icon size
+        resizeMode: 'contain',
+    },
     content: {
         marginTop: 20,
         padding: 20,
     },
-    notif:{
+    welcomeText: {
+        fontSize: 36,
+        fontWeight: '800',
+        fontFamily: 'Kanit',
+        color: '#5394F2',
+        top: -30,
+    },
+    modalContainer: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent overlay
+        justifyContent: 'flex-start',
+    },
+    overlay: {
+        flex: 1,
+        width: '100%',
+    },
+    slideMenu: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '80%', // Adjust the width as needed
+        backgroundColor: '#fff',
+        height: '100%',
+        borderTopRightRadius: 20,
+        padding: 20,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 5, // Shadow for Android
+    },
+    menu: {
+        flex: 1,
+    },
+    closeButton: {
+        alignSelf: 'flex-end',
+        marginBottom: 10,
+    },
+    closeButtonText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#333',
+    },
+    menuOption: {
+        paddingVertical: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ddd',
+    },
+    menuOptionText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#333',
+    },
+    notif: {
         width: '100%',
         height: 130,
-        borderRadius:21 ,
+        borderRadius: 21,
         alignSelf: 'center',
         top: '-1%',
         shadowColor: 'black', // Shadow color (iOS)
@@ -334,118 +395,80 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.3, // Shadow opacity (iOS)
         shadowRadius: 4, // Shadow radius (iOS)
         elevation: 5, // Shadow for Android
-      },
-      notificon:{
+    },
+    notificon: {
         width: 150,
         height: 160,
         left: '53%',
-        top: '-32%',
-      },
+        top: -170,
+    },
     noitfText: {
         fontSize: 25,
-        top: '-52%',
-        fontWeight: '600',
-        left: '10%',
+        fontFamily: 'MartianMono-Regular',
+        color: '#fff',
+        fontWeight: '800',
+        top: -255,
+        left: '8%',
     },
     noNotificationText: {
-        textAlign: 'center',
-        color: '#888',
-        fontSize: 16,
-        top: 10,
-    },
-    name: {
-        top: 60,
-    },
-    linkedStudentsContainer: {
-        top: '-45%',
-    },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#333',
-    },
-    studentItem: {
-        top: 25,
-        padding: 10,
-        borderRadius: 10,
-        backgroundColor: '#f0f0f0',
-    },
-    studentName: {
         fontSize: 18,
         fontWeight: '600',
-        top: 0,
-    },
-    studentStatus: {
-        fontSize: 16,
-        color: '#666',
-        marginVertical: 5,
-    },
-    studentButtons: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    acceptButton: {
-        backgroundColor: '#4CAF50',
-        padding: 10,
-        borderRadius: 5,
-    },
-    deleteButton: {
-        backgroundColor: '#FF5722',
-        padding: 10,
-        borderRadius: 5,
-    },
-    buttonText: {
-        color: '#fff',
-        fontWeight: '600',
-    },
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        alignItems: 'flex-end',
-    },
-    overlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    slideMenu: {
-        width: '60%',
-        backgroundColor: '#fff',
-        height: '100%',
-        paddingTop: 30,
-        paddingHorizontal: 20,
-        borderTopLeftRadius: 10,
-        borderBottomLeftRadius: 10,
-    },
-    menu: {
-        flex: 1,
-        justifyContent: 'flex-start',
-    },
-    closeButton: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-    },
-    closeButtonText: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#000',
-    },
-    menuOption: {
-        paddingVertical: 15,
-    },
-    menuOptionText: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#333',
+        color: '#999',
+        top: '-30%',
+        alignSelf: 'center',
     },
     notificationText: {
         fontSize: 16,
-        marginVertical: 5,
+        fontWeight: '500',
         color: '#333',
+        marginVertical: 5,
+    },
+    linkedParentContainer: {
+        padding: 25,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 10,
+        top: '-70%',
+        marginTop: 15,
+        height: 170,
+    },
+    linkedParentText: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#333',
+    },
+    acceptButton: {
+        marginTop: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 10,
+        width: '40%',
+        height: 45,
+        backgroundColor: '#0059Ff',
+        borderRadius: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        left: '5%',
+    },
+    acceptButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#fff',
+    },
+    deleteButton: {
+        backgroundColor: '#f44336',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 20,
+        width: '40%',
+        height: 45,
+        marginTop: 10,
+        left: '55%',
+        top: -54,
+        alignItems: 'center',
+    },
+    deleteButtonText: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 

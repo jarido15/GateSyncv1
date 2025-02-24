@@ -5,6 +5,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth'; // Firebase Auth
 import { db, auth } from './firebase'; // Firebase Auth and Firestore
 import { collection, addDoc } from 'firebase/firestore'; // Firestore
 import QRCode from 'react-native-qrcode-svg'; // QR Code Library
+import { Picker } from '@react-native-picker/picker'; // Import Picker
 
 const StudentSignup = ({ navigation }) => {
     const [username, setUsername] = useState('');
@@ -12,46 +13,51 @@ const StudentSignup = ({ navigation }) => {
     const [password, setPassword] = useState('');
     const [idNumber, setIdNumber] = useState('');
     const [yearLevel, setYearLevel] = useState('');
-    const [course, setCourse] = useState('');
+    const [course, setCourse] = useState(''); // Store selected course
     const [isModalVisible, setModalVisible] = useState(false);
     const [qrData, setQrData] = useState(''); // For storing QR code data
 
-    const handleSignup = async () => {
-        // Validate fields
-        if (!username || !email || !password || !idNumber || !yearLevel || !course) {
-            Alert.alert('Error', 'Please fill in all fields');
-            return;
-        }
-    
-        try {
-            // Step 1: Create the user in Firebase Auth
-            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
-    
-            // Step 2: Prepare QR code data (e.g., ID number or unique identifier)
-            const qrDataString = `${username}-${idNumber}`; // Example: "JohnDoe-123456"
-            setQrData(qrDataString);
-    
-            // Step 3: Save user details and QR code data to Firestore (with 'uid')
-            await addDoc(collection(db, 'students'), {
-                username,
-                email,
-                idNumber,
-                yearLevel,
-                course,
-                qrData: qrDataString, // Save QR code data
-                uid: user.uid, // Store the signed-in user's UID
-            });
-    
-            // Step 4: Show success modal
-            setModalVisible(true);
-        } catch (error) {
-            console.error('Error signing up:', error.message);
-            Alert.alert('Error', 'An error occurred while signing up. Please try again.');
-        }
-    };
+  const handleSignup = async () => {
+    // Validate fields
+    if (!username || !email || !password || !idNumber || !yearLevel || !course) {
+        Alert.alert('Error', 'Please fill in all fields');
+        return;
+    }
 
-    
+    try {
+        // Step 1: Create the user in Firebase Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Step 2: Send a verification email
+        await user.sendEmailVerification();
+
+        // Inform the user to check their email
+        Alert.alert('Verification Email Sent', 'Please check your inbox to verify your email address.');
+
+        // Step 3: Prepare QR code data (e.g., ID number or unique identifier)
+        const qrDataString = `${username}-${idNumber}`; // Example: "JohnDoe-123456"
+        setQrData(qrDataString);
+
+        // Step 4: Save user details and QR code data to Firestore (with 'uid')
+        await addDoc(collection(db, 'students'), {
+            username,
+            email,
+            idNumber,
+            yearLevel,
+            course,
+            qrData: qrDataString, // Save QR code data
+            uid: user.uid, // Store the signed-in user's UID
+        });
+
+        // Step 5: Show success modal
+        setModalVisible(true);
+    } catch (error) {
+        console.error('Error signing up:', error.message);
+        Alert.alert('Error', 'An error occurred while signing up. Please try again.');
+    }
+};
+
 
     return (
         <KeyboardAvoidingView
@@ -93,7 +99,6 @@ const StudentSignup = ({ navigation }) => {
                             placeholderTextColor={'#686D76'}
                         />
 
-
                         <View style={styles.row}>
                             <View style={styles.inputHalf}>
                                 <Text style={styles.label}>ID Number</Text>
@@ -103,6 +108,7 @@ const StudentSignup = ({ navigation }) => {
                                     value={idNumber}
                                     onChangeText={setIdNumber}
                                     placeholderTextColor={'#686D76'}
+                                    keyboardType='numeric'
                                 />
                             </View>
                             <View style={styles.inputHalf}>
@@ -118,13 +124,21 @@ const StudentSignup = ({ navigation }) => {
                         </View>
 
                         <Text style={styles.label}>Course</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Enter Course"
-                            value={course}
-                            onChangeText={setCourse}
-                            placeholderTextColor={'#686D76'}
-                        />
+                        <Picker
+                            style={styles.picker}
+                            selectedValue={course}
+                            onValueChange={setCourse}
+                        >
+                            <Picker.Item label="Select Course" value="" />
+                            <Picker.Item label="BSIT" value="BSIT" />
+                            <Picker.Item label="BSHM" value="BSHM" />
+                            <Picker.Item label="CRIM" value="CRIM" />
+                            <Picker.Item label="BSED" value="BSED" />
+                            <Picker.Item label="BSBA" value="BSBA" />
+                            <Picker.Item label="BSTM" value="BSTM" />
+                            <Picker.Item label="BSIS" value="BSIS" />
+                            <Picker.Item label="Senior High School" value="Senior High School" />
+                        </Picker>
 
                         <Text style={styles.label}>Email</Text>
                         <TextInput
@@ -270,6 +284,15 @@ const styles = StyleSheet.create({
         borderRadius: 15,
         backgroundColor: '#fff',
     },
+    picker: {
+        width: '100%',
+        height: 50,
+        borderWidth: 1,
+        borderColor: '#ddd',
+        borderRadius: 15,
+        backgroundColor: '#fff',
+        marginBottom: 15,
+    },
     row: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -300,42 +323,35 @@ const styles = StyleSheet.create({
     },
     modalContent: {
         width: '80%',
-        backgroundColor: 'white',
-        borderRadius: 10,
+        backgroundColor: '#fff',
         padding: 20,
+        borderRadius: 10,
         alignItems: 'center',
-        shadowColor: '#000',
-        shadowOpacity: 0.2,
-        shadowOffset: { width: 0, height: 2 },
-        shadowRadius: 10,
-        elevation: 5,
     },
     modalImage: {
-        width: 117,
-        height: 110,
-        marginBottom: 20,
+        width: 50,
+        height: 50,
     },
     modalTitle: {
         fontSize: 20,
         fontWeight: 'bold',
-        marginBottom: 10,
+        marginTop: 20,
     },
     modalMessage: {
         fontSize: 16,
-        color: '#333',
         textAlign: 'center',
-        marginBottom: 20,
+        marginVertical: 10,
     },
     modalButton: {
-        backgroundColor: '#5cb8ff',
-        padding: 10,
-        borderRadius: 5,
-        width: '80%',
-        alignItems: 'center',
+        backgroundColor: '#000',
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        marginTop: 20,
     },
     modalButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
+        color: '#fff',
+        fontSize: 16,
     },
 });
 

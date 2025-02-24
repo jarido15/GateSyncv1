@@ -36,6 +36,9 @@ import Myschedule from './components/Myschedule';
 
 import messaging from '@react-native-firebase/messaging';
 import { app } from './components/firebase';  // Correctly import the app
+import ParentProfile from './components/ParentProfile';
+import ForgotPassword from './components/ForgotPassword';
+import ParentForgotPassword from './components/ParentForgotPassword';
 
 
 // Create Stack and Tab Navigators
@@ -199,6 +202,8 @@ const App = () => {
           <Stack.Screen name="ParentLogin" component={ParentLogin} options={{ headerShown: false }} />
           <Stack.Screen name="ParentSignup" component={ParentSignup} options={{ headerShown: false }} />
           <Stack.Screen name="QRCode" component={QRCode} options={{ headerShown: false }} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPassword} options={{ headerShown: false }} />
+          <Stack.Screen name="ParentForgotPassword" component={ParentForgotPassword} options={{ headerShown: false }} />
           <Stack.Screen name="Myschedule" component={Myschedule} options={{ headerShown: false }} />
           <Stack.Screen name="ActivityLogs" component={ActivityLogs} options={{ headerShown: false }} />
           <Stack.Screen name="LinkParent" component={LinkParent} options={{ headerShown: false }} />
@@ -209,6 +214,7 @@ const App = () => {
           <Stack.Screen name="ParentChatPage" component={ParentChatPage} options={{ headerShown: false }} />
           <Stack.Screen name="EmergencyScreen" component={EmergencyScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ProfileScreen" component={ProfileScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ParentProfile" component={ParentProfile} options={{ headerShown: false }} />
           <Stack.Screen name="ScheduleScreen" component={ScheduleScreen} options={{ headerShown: false }} />
           <Stack.Screen name="StudentPage" component={StudentPageTabs} options={{ headerShown: false }} />
           <Stack.Screen name="ParentPage" component={ParentPageTabs} options={{ headerShown: false }} />

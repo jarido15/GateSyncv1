@@ -13,7 +13,7 @@ import {
   Alert,  // Add this import
 } from 'react-native';
 import { auth, db } from '../components/firebase';
-import { collection, doc, getDocs, query, where } from 'firebase/firestore';
+import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
 
 const ParentHomeScreen = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
@@ -58,46 +58,54 @@ const ParentHomeScreen = ({ navigation }) => {
     };
   }, [menuVisible]);
 
-  const fetchStudentSchedule = async () => {
+  const fetchStudentSchedule = () => {
     try {
       if (!auth.currentUser) return;
   
       // Get linked student UIDs where status is "accepted"
       const parentRef = collection(db, 'parent', auth.currentUser.uid, 'LinkedStudent');
       const linkedStudentQuery = query(parentRef, where('status', '==', 'accepted'));
-      const linkedStudentSnapshot = await getDocs(linkedStudentQuery);
   
-      if (linkedStudentSnapshot.empty) {
-        console.log('No accepted students found');
-        return;
-      }
-  
-      const allSchedules = [];
-      // Loop through linked students and fetch schedules
-      for (const studentDoc of linkedStudentSnapshot.docs) {
-        const studentData = studentDoc.data();
-        const uid = studentData.uid;
-  
-        // Query schedules where studentUid matches
-        const scheduleQuery = query(
-          collection(db, 'schedules'),
-          where('uid', '==', uid)
-        );
-        const scheduleSnapshot = await getDocs(scheduleQuery);
-  
-        if (!scheduleSnapshot.empty) {
-          scheduleSnapshot.forEach((sched) => {
-            allSchedules.push(sched.data()); // Add schedule to the array
-          });
+      // Listen to changes in linked students collection
+      const unsubscribeLinkedStudents = onSnapshot(linkedStudentQuery, async (linkedStudentSnapshot) => {
+        if (linkedStudentSnapshot.empty) {
+          console.log('No accepted students found');
+          setSchedule([]); // Clear schedules if no linked students are found
+          return;
         }
-      }
   
-      setSchedule(allSchedules); // Update schedule state with all schedules
+        const allSchedules = [];
+        // Loop through linked students and fetch schedules
+        for (const studentDoc of linkedStudentSnapshot.docs) {
+          const studentData = studentDoc.data();
+          const uid = studentData.uid;
+  
+          // Query schedules where studentUid matches
+          const scheduleQuery = query(
+            collection(db, 'schedules'),
+            where('uid', '==', uid)
+          );
+  
+          // Listen to changes in schedules collection
+          const unsubscribeSchedules = onSnapshot(scheduleQuery, (scheduleSnapshot) => {
+            allSchedules.length = 0; // Clear previous schedules
+            scheduleSnapshot.forEach((sched) => {
+              allSchedules.push(sched.data()); // Add schedule to the array
+            });
+            setSchedule(allSchedules); // Update schedule state with all schedules
+          });
+  
+          // Clean up the listener after the operation is completed
+          return () => unsubscribeSchedules();
+        }
+      });
+  
+      // Clean up the listener when the component is unmounted or the parent ref changes
+      return () => unsubscribeLinkedStudents();
     } catch (error) {
       console.error('Error fetching student schedule:', error);
     }
   };
-  
 
   const openMenu = () => {
     setMenuVisible(true);
@@ -158,9 +166,9 @@ const ParentHomeScreen = ({ navigation }) => {
               <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Linked Children</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
-                <Text style={styles.menuOptionText}>Settings</Text>
-              </TouchableOpacity>
+             <TouchableOpacity onPress={() => navigateToPage('ParentProfile')} style={styles.menuOption}>
+                 <Text style={styles.menuOptionText}>Profile</Text>
+             </TouchableOpacity>
               <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Logout</Text>
               </TouchableOpacity>
@@ -174,8 +182,8 @@ const ParentHomeScreen = ({ navigation }) => {
         <Modal visible={profileDropdownVisible} animationType="fade" transparent={true} onRequestClose={closeProfileDropdown}>
           <TouchableOpacity style={styles.overlay} onPress={closeProfileDropdown} />
           <View style={styles.profileDropdown}>
-            <TouchableOpacity style={styles.dropdownItem} onPress={() => navigateToPage('HelpScreen')}>
-              <Text style={styles.dropdownText}>Help</Text>
+            <TouchableOpacity style={styles.dropdownItem} onPress={() => navigateToPage('ParentProfile')}>
+              <Text style={styles.dropdownText}>Profile</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.dropdownItem} onPress={() => navigateToPage('ParentLogin')}>
               <Text style={styles.dropdownText}>Logout</Text>
@@ -209,8 +217,8 @@ const ParentHomeScreen = ({ navigation }) => {
             <>
               <View style={styles.tableHeader}>
                 <Text style={styles.tableHeaderText}>Date</Text>
-                <Text style={styles.tableHeaderText}>Time In</Text>
-                <Text style={styles.tableHeaderText}>Time Out</Text>
+                <Text style={styles.tableHeaderText}>Class Start</Text>
+                <Text style={styles.tableHeaderText}>Class End</Text>
               </View>
               {schedule.map((sched, index) => (
                 <View key={index} style={styles.tableRow}>

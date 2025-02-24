@@ -206,9 +206,9 @@ const MessageScreen = ({ navigation }) => {
                <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
                               <Text style={styles.menuOptionText}>Linked Children</Text>
                             </TouchableOpacity>
-               <TouchableOpacity onPress={() => console.log('Settings Pressed')} style={styles.menuOption}>
-                              <Text style={styles.menuOptionText}>Settings</Text>
-                            </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigateToPage('ParentProfile')} style={styles.menuOption}>
+                               <Text style={styles.menuOptionText}>Profile</Text>
+                           </TouchableOpacity>
               <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
                 <Text style={styles.menuOptionText}>Logout</Text>
               </TouchableOpacity>
