@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
-import { doc, deleteDoc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, deleteDoc, getDoc, collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
 import { db } from '../components/firebase'; // Your Firebase Firestore setup
 import { getAuth } from 'firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';

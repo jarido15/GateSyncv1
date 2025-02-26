@@ -62,7 +62,7 @@ const NotificationScreen = ({ navigation }) => {
     const acceptLinkedParent = async (linkedParentId) => {
         if (!linkedParentId) {
             console.error("LinkedParent ID is not valid:", linkedParentId);
-            return; // Exit the function early if the ID is invalid
+            return;
         }
     
         try {
@@ -80,31 +80,14 @@ const NotificationScreen = ({ navigation }) => {
                     // Update the LinkedParent status
                     await updateDoc(linkedParentRef, { status: 'accepted' });
     
+                    // Update the state to reflect the new status
+                    setLinkedParentData((prevData) =>
+                        prevData.map((parent) =>
+                            parent.uid === linkedParentId ? { ...parent, status: 'accepted' } : parent
+                        )
+                    );
+    
                     console.log(`LinkedParent status updated to 'Accepted' for ${linkedParentId}`);
-    
-                    // Update the corresponding LinkedStudent document (if any)
-                    const parentsRef = collection(db, 'parent');
-                    const parentQuery = query(parentsRef, where('uid', '==', linkedParentId));
-                    const parentQuerySnapshot = await getDocs(parentQuery);
-    
-                    if (!parentQuerySnapshot.empty) {
-                        const parentDoc = parentQuerySnapshot.docs[0]; // Parent document
-                        const linkedStudentRef = collection(parentDoc.ref, 'LinkedStudent');
-                        const linkedStudentSnapshot = await getDocs(linkedStudentRef);
-    
-                        const linkedStudentDoc = linkedStudentSnapshot.docs.find(
-                            doc => doc.data().uid === user.uid
-                        );
-    
-                        if (linkedStudentDoc) {
-                            await updateDoc(linkedStudentDoc.ref, { status: 'accepted' });
-                            console.log(`LinkedStudent status updated to 'Accepted' for UID: ${user.uid}`);
-                        } else {
-                            console.log('LinkedStudent document not found');
-                        }
-                    } else {
-                        console.log('Parent document not found');
-                    }
                 } else {
                     console.log('Student document not found');
                 }
@@ -115,6 +98,7 @@ const NotificationScreen = ({ navigation }) => {
             console.error('Error accepting LinkedParent:', error);
         }
     };
+    
     
     useEffect(() => {
         fetchLinkedParentData(); // Fetch LinkedParent data when component mounts
@@ -229,35 +213,37 @@ const NotificationScreen = ({ navigation }) => {
                         ))
                     )}
 
-                    {/* Render LinkedParent data if available */}
-                    {linkedParentData.length > 0 ? (
-                        linkedParentData.map((parent, index) => (
-                            <View key={index} style={styles.linkedParentContainer}>
-                                <Text style={styles.linkedParentText}>Parent Name: {parent.username}</Text>
-                                <Text style={styles.linkedParentText}>Phone: {parent.contactNumber}</Text>
-                                <Text style={styles.linkedParentText}>Email: {parent.email}</Text>
+{linkedParentData.length === 0 ? (
+    <Text style={styles.noNotificationText}>No Parent Request</Text>
+) : (
+    linkedParentData.map(parent => (
+        <View key={parent.uid} style={styles.linkedParentContainer}>
+            <Text style={styles.linkedParentText}>Parent Name: {parent.username}</Text>
+            <Text style={styles.linkedParentText}>Phone: {parent.contactNumber}</Text>
+            <Text style={styles.linkedParentText}>Email: {parent.email}</Text>
 
-                                {/* Button to accept the linked parent */}
-                                <TouchableOpacity
-    style={styles.acceptButton}
-    onPress={() => acceptLinkedParent(parent.uid)} // Ensure 'parent.id' is valid
->
-    <Text style={styles.acceptButtonText}>Accept</Text>
-</TouchableOpacity>
-
-{/* Button to delete the linked parent */}
-<TouchableOpacity
-                                    style={styles.deleteButton}
-                                    onPress={() => deleteLinkedParent(parent.uid)} // Ensure 'parent.id' is valid
-                                >
-                                    <Text style={styles.deleteButtonText}>Delete</Text>
-                                </TouchableOpacity>
-
-                            </View>
-                        ))
-                    ) : (
-                        <Text style={styles.noNotificationText}>No Parent Request</Text>
-                    )}
+            {/* Show status text */}
+            {parent.status === 'accepted' ? (
+                <Text style={styles.acceptedText}>Status: Accepted</Text>
+            ) : (
+                <View style={styles.studentButtons}>
+                    <TouchableOpacity
+                        onPress={() => acceptLinkedParent(parent.uid)}
+                        style={styles.acceptButton}
+                    >
+                        <Text style={styles.acceptButtonText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        onPress={() => deleteLinkedParent(parent.uid)}
+                        style={styles.deleteButton}
+                    >
+                        <Text style={styles.deleteButtonText}>Delete</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+        </View>
+    ))
+)}
                 </View>
             </ScrollView>
 
