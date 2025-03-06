@@ -208,7 +208,7 @@ const ParentHomeScreen = ({ navigation }) => {
       {/* Class Schedule Section */}
       <View style={styles.schedcontainer}>
         <View style={styles.titlecontainer}>
-          <Text style={styles.titleschedule}> Class Schedule</Text>
+          <Text style={styles.titleschedule}> Class Hours</Text>
         </View>
 
         {/* Displaying schedule in table format */}

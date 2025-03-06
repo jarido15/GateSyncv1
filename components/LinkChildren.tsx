@@ -101,6 +101,7 @@ const LinkChildren = ({ navigation }) => {
           email: auth.currentUser.email,
           uid: parentUid,
           status: 'Pending',
+          status2: 'Pending',
         });
   
         // Set action field to "requesting"

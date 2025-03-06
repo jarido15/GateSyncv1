@@ -19,6 +19,7 @@ import { collection, query, where, getDocs } from "firebase/firestore";
 const StudentLogin = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+   const [passwordVisible, setPasswordVisible] = useState(false); // Added state
 
  
   const handleLogin = async () => {
@@ -87,15 +88,27 @@ const StudentLogin = ({ navigation }) => {
           placeholderTextColor="#686D76"
           keyboardType="email-address"
         />
-        <Text style={styles.password}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          placeholderTextColor="#686D76"
-        />
+             <Text style={styles.password}>Password</Text>
+                               <View style={styles.passwordContainer}>
+                                 <TextInput
+                                   style={styles.inputPassword}
+                                   placeholder="Password"
+                                   secureTextEntry={!passwordVisible} // Corrected
+                                   value={password}
+                                   onChangeText={setPassword}
+                                   placeholderTextColor="#686D76"
+                                 />
+                                 <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIcon}>
+                                   <Image
+                                     source={
+                                       passwordVisible
+                                         ? require('../images/visible.png') // Eye open
+                                         : require('../images/eye.png') // Eye closed
+                                     }
+                                     style={styles.eyeImage}
+                                   />
+                                 </TouchableOpacity>
+                               </View>
         <TouchableOpacity style={styles.button} onPress={handleLogin}>
         <Text style={styles.buttonText}>Login</Text>
       </TouchableOpacity>
@@ -170,6 +183,10 @@ const styles = StyleSheet.create({
     top: 100,
     left: -45,
   },
+  passwordContainer: { flexDirection: 'row', alignItems: 'center', width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 15, backgroundColor: '#fff', paddingHorizontal: 15, marginBottom: 20 },
+  inputPassword: { flex: 1, padding: 15, color: 'black' },
+  eyeIcon: { padding: 10 },
+  eyeImage: { width: 24, height: 24, tintColor: 'gray' },
   inputContainer: {
     width: '90%',
     padding: 20,

@@ -16,11 +16,32 @@ const StudentSignup = ({ navigation }) => {
     const [course, setCourse] = useState(''); // Store selected course
     const [isModalVisible, setModalVisible] = useState(false);
     const [qrData, setQrData] = useState(''); // For storing QR code data
+    const [passwordVisible, setPasswordVisible] = useState(false); // Added state
 
     const handleSignup = async () => {
         // Validate fields
         if (!username || !email || !password || !idNumber || !yearLevel || !course) {
             Alert.alert('Error', 'Please fill in all fields');
+            return;
+        }
+    
+        // Validate ID number (maximum of 12 characters)
+        if (idNumber.length > 12) {
+            Alert.alert('Error', 'ID number cannot be more than 12 characters');
+            return;
+        }
+    
+        // Validate email format (must be @gmail.com)
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
+        if (!emailRegex.test(email)) {
+            Alert.alert('Error', 'Please enter a valid Gmail address');
+            return;
+        }
+    
+        // Validate username (must not contain numbers)
+        const usernameRegex = /^[^\d]*$/; // Regex to check if username contains digits
+        if (!usernameRegex.test(username)) {
+            Alert.alert('Error', 'Username must not contain numbers');
             return;
         }
     
@@ -57,6 +78,7 @@ const StudentSignup = ({ navigation }) => {
             Alert.alert('Error', 'An error occurred while signing up. Please try again.');
         }
     };
+    
 
     return (
         <KeyboardAvoidingView
@@ -150,15 +172,27 @@ const StudentSignup = ({ navigation }) => {
                             placeholderTextColor={'#686D76'}
                         />
 
-                        <Text style={styles.label}>Password</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Enter Password"
-                            secureTextEntry
-                            value={password}
-                            onChangeText={setPassword}
-                            placeholderTextColor={'#686D76'}
-                        />
+                        <Text style={styles.password}>Password</Text>
+                                              <View style={styles.passwordContainer}>
+                                                <TextInput
+                                                  style={styles.inputPassword}
+                                                  placeholder="Password"
+                                                  secureTextEntry={!passwordVisible} // Corrected
+                                                  value={password}
+                                                  onChangeText={setPassword}
+                                                  placeholderTextColor="#686D76"
+                                                />
+                                                <TouchableOpacity onPress={() => setPasswordVisible(!passwordVisible)} style={styles.eyeIcon}>
+                                                  <Image
+                                                    source={
+                                                      passwordVisible
+                                                        ? require('../images/visible.png') // Eye open
+                                                        : require('../images/eye.png') // Eye closed
+                                                    }
+                                                    style={styles.eyeImage}
+                                                  />
+                                                </TouchableOpacity>
+                                              </View>
                     </View>
 
                     <TouchableOpacity style={styles.button} onPress={handleSignup}>
@@ -353,6 +387,16 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
     },
+    passwordContainer: { flexDirection: 'row', alignItems: 'center', width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 15, backgroundColor: '#fff', paddingHorizontal: 15, marginBottom: 20 },
+  inputPassword: { flex: 1, padding: 15, color: 'black' },
+  eyeIcon: { padding: 10 },
+  eyeImage: { width: 24, height: 24, tintColor: 'gray' },
+  password: {
+    color: 'black',
+    fontSize: 16,
+    fontWeight: '400',
+    marginBottom: 10,
+  },
 });
 
 export default StudentSignup;

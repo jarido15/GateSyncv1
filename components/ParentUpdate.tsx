@@ -1,6 +1,7 @@
+/* eslint-disable no-trailing-spaces */
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar } from 'react-native';
-import { doc, deleteDoc, getDoc, collection, getDocs, query, where, updateDoc } from 'firebase/firestore';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity, Modal, Animated, StatusBar, Button } from 'react-native';
+import { doc, deleteDoc, getDoc, collection, getDocs, query, where, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../components/firebase'; // Your Firebase Firestore setup
 import { getAuth } from 'firebase/auth';
 import LinearGradient from 'react-native-linear-gradient';
@@ -12,6 +13,9 @@ const ParentUpdate = ({ navigation }) => {
     const slideAnim = useRef(new Animated.Value(-400)).current; // Initial position of the modal (off-screen to the left)
     const auth = getAuth();
     const currentUserUID = auth.currentUser ? auth.currentUser.uid : null;
+    const [scannedIds, setScannedIds] = useState([]);
+    const [modalVisible, setModalVisible] = useState(false);
+  const [selectedScannedId, setSelectedScannedId] = useState(null);
 
     useEffect(() => {
         if (currentUserUID) {
@@ -41,7 +45,106 @@ const ParentUpdate = ({ navigation }) => {
     }, [currentUserUID]);
     
     
+    const fetchScannedIds = async () => {
+        if (!currentUserUID) {
+            console.log('User not logged in.');
+            return;
+        }
+    
+        try {
+            // Step 1: Fetch linked students from the parent's LinkedStudent subcollection
+            const linkedStudentRef = collection(db, 'parent', currentUserUID, 'LinkedStudent');
+            const linkedStudentSnapshot = await getDocs(linkedStudentRef);
+    
+            if (linkedStudentSnapshot.empty) {
+                console.log('No linked students found.');
+                return;
+            }
+    
+            // Extract idNumbers and usernames from the linked students
+            const linkedStudents = linkedStudentSnapshot.docs.map(doc => ({
+                idNumber: doc.data().idNumber,
+                username: doc.data().username,
+                course: doc.data().course, // Extracting the username
+                yearLevel: doc.data().yearLevel, // Extracting the username
+            }));
+            console.log('Linked students:', linkedStudents);
+    
+            // Step 2: Query the scanned_ids collection where idNumber matches the linked student id
+            const scannedIdsRef = collection(db, 'scanned_ids');
+            const q = query(
+                scannedIdsRef,
+                where('idNumber', 'in', linkedStudents.map(student => student.idNumber)), // Match the idNumber with linked students
+                where('status', '==', 'Pending')  // Only consider pending status
+            );
+    
+            const scannedIdsSnapshot = await getDocs(q);
+    
+            if (scannedIdsSnapshot.empty) {
+                console.log('No matching scanned IDs found.');
+                return;
+            }
+    
+            // Map through the results and store them
+            const scannedIds = scannedIdsSnapshot.docs.map(doc => {
+                const scannedData = doc.data();
+                // Find the matching linked student for each scanned ID
+                const linkedStudent = linkedStudents.find(student => student.idNumber === scannedData.idNumber);
+                return {
+                    ...scannedData,
+                    username: linkedStudent ? linkedStudent.username : 'Unknown',
+                    course: linkedStudent ? linkedStudent.course : 'Unknown',
+                    yearLevel: linkedStudent ? linkedStudent.yearLevel : 'Unknown', // Add the username to the scanned ID
+                };
+            });
+            console.log('Fetched scanned IDs:', scannedIds);
+    
+            // Set the scanned IDs in the state
+            setScannedIds(scannedIds); // Set the scanned IDs along with usernames for rendering
+        } catch (error) {
+            console.error('Error fetching scanned IDs:', error);
+        }
+    };
 
+      // Add the necessary function to call fetchScannedIds when needed
+      useEffect(() => {
+        fetchScannedIds();
+    }, [currentUserUID]);
+    
+
+    const handleScannedIdClick = async (scannedId) => {
+      if (!scannedId || !scannedId.idNumber) {
+        console.error("Invalid scannedId or missing idNumber:", scannedId);
+        return;
+      }
+    
+      try {
+        // Query Firestore to find the document where idNumber matches
+        const q = query(collection(db, "scanned_ids"), where("idNumber", "==", scannedId.idNumber));
+        const querySnapshot = await getDocs(q);
+    
+        if (querySnapshot.empty) {
+          console.error("No document found with idNumber:", scannedId.idNumber);
+          return;
+        }
+    
+        // Get the document ID
+        const docRef = querySnapshot.docs[0].ref;
+    
+        // Update the status field
+        await updateDoc(docRef, { status: "Approved" });
+    
+        // Show the modal with the selected scanned ID details
+        setSelectedScannedId(scannedId);
+        setModalVisible(true);
+      } catch (error) {
+        console.error("Error updating scanned ID status:", error);
+      }
+    };
+    
+      
+    
+    
  
      const openMenu = () => {
          setMenuVisible(true); // Show the menu modal
@@ -114,6 +217,9 @@ const ParentUpdate = ({ navigation }) => {
                     await updateDoc(linkedStudentDocRef, {
                         status: 'accepted', // Update status in LinkedStudent subcollection of parent
                     });
+                    await updateDoc(linkedStudentDocRef, {
+                        status1: 'accepted', // Update status in LinkedStudent subcollection of parent
+                    });
     
                     console.log('Status updated in LinkedStudent subcollection');
                     // Update the state to reflect changes in the parent component (LinkedStudent state)
@@ -173,97 +279,137 @@ const ParentUpdate = ({ navigation }) => {
 
     return (
         <>
-            
-                <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
-                <View style={styles.navbar}>
-                    <TouchableOpacity onPress={openMenu}>
-                        <Image
-                            source={require('../images/menu.png')} // Replace with your burger menu image path
-                            style={styles.menuIcon}
-                        />
-                    </TouchableOpacity>
-                    <View style={styles.navCenter}>
-                        <Image
-                            source={require('../images/logo.png')} // Replace with your logo image path
-                            style={styles.logo}
-                        />
-                        <Image source={require('../images/GateSync.png')} style={styles.gatesync} />
+          <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
+          <View style={styles.navbar}>
+            <TouchableOpacity onPress={openMenu}>
+              <Image
+                source={require('../images/menu.png')}
+                style={styles.menuIcon}
+              />
+            </TouchableOpacity>
+            <View style={styles.navCenter}>
+              <Image
+                source={require('../images/logo.png')}
+                style={styles.logo}
+              />
+              <Image source={require('../images/GateSync.png')} style={styles.gatesync} />
+            </View>
+          </View>
+          <ScrollView style={styles.container}>
+            <View style={styles.content}>
+              <LinearGradient colors={['#6B9BFA', '#0056FF']} style={styles.notif} />
+              <Image source={require('../images/Updates.png')} style={styles.notificon} />
+              <Text style={styles.noitfText}>Notifications</Text>
+              <Text style={styles.noitfText}>List</Text>
+    
+              {/* Notification rendering */}
+              {notifications.length === 0 ? (
+                <Text style={styles.noNotificationText}> </Text>
+              ) : (
+                notifications.map((notif, index) => (
+                  <Text key={index} style={styles.notificationText}>
+                    {notif}
+                  </Text>
+                ))
+              )}
+    
+              {/* Linked Students Section */}
+              <View style={styles.linkedStudentsContainer}>
+                {linkedStudents.length === 0 ? (
+                  <Text style={styles.noNotificationText}> </Text>
+                ) : (
+                  linkedStudents.map(student => (
+                    <View key={student.id} style={styles.linkedParentContainer}>
+                      <Text style={styles.sectionTitle}>Link Request</Text>
+                      <Text style={styles.linkedParentText}>{student.username}</Text>
+                      <Text style={styles.linkedParentText}>Course: {student.course}</Text>
+                      <Text style={styles.linkedParentText}>Status: {student.status}</Text>
+                      {student.status !== 'accepted' && (
+                        <View style={styles.studentButtons}>
+                          <TouchableOpacity
+                            onPress={() => handleAccept(student.id, student.uid)}
+                            style={styles.acceptButton}
+                          >
+                            <Text style={styles.acceptButtonText}>Accept</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => handleDelete(student.id)}
+                            style={styles.deleteButton}
+                          >
+                            <Text style={styles.deleteButtonText}>Delete</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
-                </View>
-                <ScrollView style={styles.container}>
-                <View style={styles.content}>
-                    <LinearGradient colors={['#6B9BFA', '#0056FF']} style={styles.notif} />
-                    <Image source={require('../images/Updates.png')} style={styles.notificon} />
-                    <Text style={styles.noitfText}>Notifications</Text>
-                    <Text style={styles.noitfText}>List</Text>
-                    {/* Conditionally render the No Notifications message or the notifications list */}
-                    {notifications.length === 0 ? (
-                        <Text style={styles.noNotificationText}> </Text>
-                    ) : (
-                        notifications.map((notif, index) => (
-                            <Text key={index} style={styles.notificationText}>
-                                {notif}
-                            </Text>
-                        ))
-                    )}
-
-                    <View style={styles.linkedStudentsContainer}>
-                        <Text style={styles.sectionTitle}> </Text>
-                        {linkedStudents.length === 0 ? (
-                            <Text style={styles.noNotificationText}> </Text>
+                  ))
+                )}
+              </View>
+    
+              {/* Scanned IDs Section */}
+              <View style={styles.scannedIdsContainer}>
+                <Text style={styles.sectionTitle}>Scanned Entries</Text>
+                {scannedIds.length === 0 ? (
+                        <Text style={styles.noNotificationText}>No scanned IDs found.</Text>
                         ) : (
-                            linkedStudents.map(student => (
-                                <View key={student.id} style={styles.linkedParentContainer}>
-                                    <Text style={styles.linkedParentText}>{student.username}</Text>
-                                    <Text style={styles.linkedParentText}>Course: {student.course}</Text>
-                                    <Text style={styles.linkedParentText}>Status: {student.status}</Text>
-                                    {student.status !== 'accepted' && (
-                                        <View style={styles.studentButtons}>
-                                            <TouchableOpacity
-                                                onPress={() => handleAccept(student.id, student.uid)}
-                                                style={styles.acceptButton}
-                                            >
-                                                <Text style={styles. acceptButtonText}>Accept</Text>
-                                            </TouchableOpacity>
-                                            <TouchableOpacity
-                                                onPress={() => handleDelete(student.id)}
-                                                style={styles.deleteButton}
-                                            >
-                                                <Text style={styles.  deleteButtonText}>Delete</Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    )}
-                                </View>
-                            ))
+                        scannedIds.map((scannedId, index) => (  // ✅ Corrected
+                            <TouchableOpacity
+                            key={index}
+                            style={styles.scannedIdItem}
+                            onPress={() => handleScannedIdClick(scannedId)}
+                            >
+                            <Text style={styles.scannedIdText}>Username: {scannedId.username}</Text>
+                            <Text style={styles.scannedIdText}>Course: {scannedId.course}</Text>
+                            <Text style={styles.scannedIdText}>Scan Time: {scannedId.timestamp}</Text>
+                            </TouchableOpacity>
+                        ))
                         )}
-                    </View>
-                </View>
-            </ScrollView>
 
-           <Modal visible={menuVisible} transparent={true} animationType="none" onRequestClose={closeMenu}>
-                  <View style={styles.modalContainer}>
-                    <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
-                    <Animated.View style={[styles.slideMenu, { transform: [{ translateX: slideAnim }] }]}>
-                      <View style={styles.menu}>
-                        <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
-                          <Text style={styles.closeButtonText}>X</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
-                          <Text style={styles.menuOptionText}>Linked Children</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => navigateToPage('ParentProfile')} style={styles.menuOption}>
-                          <Text style={styles.menuOptionText}>Profile</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
-                          <Text style={styles.menuOptionText}>Logout</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </Animated.View>
-                  </View>
-                </Modal>
+              </View>
+            </View>
+          </ScrollView>
+    
+          {/* Menu Modal */}
+          <Modal visible={menuVisible} transparent={true} animationType="none" onRequestClose={closeMenu}>
+            <View style={styles.modalContainer}>
+              <TouchableOpacity style={styles.overlay} onPress={closeMenu} />
+              <Animated.View style={[styles.slideMenu]}>
+                <View style={styles.menu}>
+                  <TouchableOpacity onPress={closeMenu} style={styles.closeButton}>
+                    <Text style={styles.closeButtonText}>X</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigateToPage('LinkedChildren')} style={styles.menuOption}>
+                    <Text style={styles.menuOptionText}>Linked Children</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigateToPage('ParentProfile')} style={styles.menuOption}>
+                    <Text style={styles.menuOptionText}>Profile</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => navigateToPage('ParentLogin')} style={styles.menuOption}>
+                    <Text style={styles.menuOptionText}>Logout</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
+            </View>
+          </Modal>
+    
+          {/* Modal for displaying scanned ID details */}
+          {selectedScannedId && (
+            <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+              <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Scanned ID Details</Text>
+                  <Text style={styles.modalText}>Username: {selectedScannedId.username}</Text>
+                  <Text style={styles.modalText}>ID Number: {selectedScannedId.idNumber}</Text>
+                  <Text style={styles.modalText}>Course: {selectedScannedId.course}</Text>
+                  <Text style={styles.modalText}>Year Level: {selectedScannedId.yearLevel}</Text>
+                  <Text style={styles.modalText}>Scan Time: {selectedScannedId.timestamp}</Text>
+                  <Button title="Close" onPress={() => setModalVisible(false)} />
+                </View>
+              </View>
+            </Modal>
+          )}
         </>
-    );
-};
+      );
+    };
 
 const styles = StyleSheet.create({
     container: {
@@ -425,16 +571,18 @@ const styles = StyleSheet.create({
     },
     linkedParentContainer: {
         padding: 25,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: '#fff',
         borderRadius: 10,
-        top: '-70%',
-        marginTop: 15,
+        top: '-129%',
+        marginTop: 10,
         height: 170,
     },
     linkedParentText: {
         fontSize: 16,
         fontWeight: '500',
         color: '#333',
+        top: '10%',
+        left: 10,
     },
     acceptButton: {
         marginTop: 10,
@@ -470,6 +618,47 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
     },
+    scannedIdsContainer: {
+        marginTop: 5,
+        padding: 20,
+        top: '-29%',
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        marginBottom: 15,
+    },
+    scannedIdItem: {
+        paddingVertical: 10,
+        paddingHorizontal: 15,
+        borderBottomWidth: 1,
+        borderBottomColor: '#ccc',
+    },
+    scannedIdText: {
+        fontSize: 16,
+        color: '#333',
+        fontWeight: '500',
+    },
+    modalOverlay: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      },
+      modalContent: {
+        width: '80%',
+        padding: 20,
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        alignItems: 'center',
+      },
+      modalTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 10,
+      },
+      modalText: {
+        fontSize: 16,
+        marginBottom: 10,
+      },
 });
 
 export default ParentUpdate;

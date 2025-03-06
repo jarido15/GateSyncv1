@@ -132,6 +132,7 @@ const LinkedParent = ({ navigation }) => {
   
         // Update action field to 'active' once linked
         await setDoc(linkedStudentRef, { action: 'active' }, { merge: true });
+        await setDoc(linkedStudentRef, { status1: 'Pending' }, { merge: true });
 
         setLinkedParents((prev) => [...prev, parent]);
         Toast.show({ type: 'success', text1: 'Parent Linked Successfully (Pending)' });

@@ -173,10 +173,10 @@ const MessageScreen = ({ navigation }) => {
                   <View style={styles.parentItem}>
                     <Text style={styles.parentName}>{user.username}</Text>
                     {/* Display the latest message for each chat */}
-                    <Text style={styles.latestMessage}>
-                      {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
-                        messages[`${user.id}_${getAuth().currentUser.uid}`].slice(-1)[0]?.text}
-                    </Text>
+                           <Text style={styles.latestMessage}>
+                    {messages[`${user.id}_${getAuth().currentUser.uid}`] &&
+                      messages[`${user.id}_${getAuth().currentUser.uid}`].slice(-1)[0]?.text}
+                  </Text>
                   </View>
                 </TouchableOpacity>
               ))
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
   },
   latestMessage: {
     fontSize: 14,
-    color: '#555', // Soft gray for readability
+    color: '#000', // Soft gray for readability
     fontStyle: 'italic', // Make it italic to differentiate
     marginTop: 4,
     backgroundColor: '#E3F2FD', // Light blue background
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#CFE5FF',
     padding: 15,
     marginVertical: 5,
-    borderRadius: 10,
+    borderRadius: 20,
     elevation: 2,
   },
   parentName: {

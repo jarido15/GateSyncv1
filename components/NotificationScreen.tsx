@@ -58,7 +58,6 @@ const NotificationScreen = ({ navigation }) => {
     };
     
     
-    // Function to accept LinkedParent and update the status
     const acceptLinkedParent = async (linkedParentId) => {
         if (!linkedParentId) {
             console.error("LinkedParent ID is not valid:", linkedParentId);
@@ -79,8 +78,33 @@ const NotificationScreen = ({ navigation }) => {
     
                     // Update the LinkedParent status
                     await updateDoc(linkedParentRef, { status: 'accepted' });
+                    await updateDoc(linkedParentRef, { status2: 'accepted' });
     
-                    // Update the state to reflect the new status
+                    // Now, update the LinkedStudent status in the parent's collection
+                    const parentsRef = collection(db, 'parent');
+                    const parentQuery = query(parentsRef, where('uid', '==', linkedParentId)); // Match the parent based on their UID
+                    const parentSnapshot = await getDocs(parentQuery);
+    
+                    if (!parentSnapshot.empty) {
+                        const parentDoc = parentSnapshot.docs[0]; // Parent document
+                        const linkedStudentRef = collection(parentDoc.ref, 'LinkedStudent');
+                        const linkedStudentQuery = query(linkedStudentRef, where('uid', '==', user.uid)); // Match current user's UID in LinkedStudent sub-collection
+    
+                        const linkedStudentSnapshot = await getDocs(linkedStudentQuery);
+                        if (!linkedStudentSnapshot.empty) {
+                            const linkedStudentDocRef = doc(linkedStudentRef, linkedStudentSnapshot.docs[0].id);
+                            // Update the LinkedStudent status
+                            await updateDoc(linkedStudentDocRef, { status: 'accepted' });
+    
+                            console.log(`LinkedStudent status updated to 'Accepted' in the parent's collection`);
+                        } else {
+                            console.log('Student not found in LinkedStudent sub-collection inside parent document');
+                        }
+                    } else {
+                        console.log('Parent document not found');
+                    }
+    
+                    // Update the state to reflect the new status in the student's collection
                     setLinkedParentData((prevData) =>
                         prevData.map((parent) =>
                             parent.uid === linkedParentId ? { ...parent, status: 'accepted' } : parent
@@ -98,6 +122,7 @@ const NotificationScreen = ({ navigation }) => {
             console.error('Error accepting LinkedParent:', error);
         }
     };
+    
     
     
     useEffect(() => {
