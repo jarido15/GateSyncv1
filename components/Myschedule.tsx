@@ -1,54 +1,53 @@
+/* eslint-disable no-catch-shadow */
+/* eslint-disable @typescript-eslint/no-shadow */
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, FlatList } from 'react-native';
 import { auth, db } from './firebase'; // Import Firebase
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 const MyscheduleScreen = ({ navigation }) => {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    const fetchSchedules = async () => {
-      try {
-        const user = auth.currentUser;
-
-        if (user) {
-          const userId = user.uid;
-          console.log('Fetching schedules for user with UID:', userId); // Debugging line
-
-          // Query to fetch all schedules
-          const schedulesQuery = collection(db, 'schedules');
-          const querySnapshot = await getDocs(schedulesQuery);
-
-          // Filter the schedules for the current user based on the document ID or other criteria
-          const fetchedSchedules = querySnapshot.docs
-            .filter(doc => doc.id === userId)  // Assuming doc.id corresponds to user UID
-            .map(doc => {
-              console.log('Schedule ID:', doc.id); // Log the document ID
-              return doc.data(); // Return schedule data
-            });
-
-          // Debugging: Check if any schedules exist for this user
-          if (fetchedSchedules.length === 0) {
-            console.log('No schedules found for this user');
-            setSchedules([]); // No schedules found
-          } else {
-            console.log('Fetched schedules:', fetchedSchedules); // Debugging line
-            setSchedules(fetchedSchedules); // Set the fetched schedules to state
-          }
+  const fetchSchedules = async () => {
+    try {
+      const user = auth.currentUser;
+  
+      if (user) {
+        const userId = user.uid;
+        console.log('Fetching schedules for user with UID:', userId); // Debugging line
+  
+        // Query schedules where the 'uid' field matches the current user's UID
+        const schedulesQuery = query(collection(db, 'schedules'), where('uid', '==', userId));
+        const querySnapshot = await getDocs(schedulesQuery);
+  
+        // Extract schedule data
+        const fetchedSchedules = querySnapshot.docs.map(doc => ({
+          id: doc.id, // Keep document ID if needed
+          ...doc.data()
+        }));
+  
+        if (fetchedSchedules.length === 0) {
+          console.log('No schedules found for this user');
+          setSchedules([]); // No schedules found
         } else {
-          console.log('No user is currently logged in.');
-          setError('User is not logged in');
+          console.log('Fetched schedules:', fetchedSchedules); // Debugging line
+          setSchedules(fetchedSchedules); // Update state
         }
-      } catch (error) {
-        console.error('Error fetching schedules:', error);
-        setError('An error occurred while fetching schedules');
-      } finally {
-        setLoading(false);
+      } else {
+        console.log('No user is currently logged in.');
+        setError('User is not logged in');
       }
-    };
-
+    } catch (error) {
+      console.error('Error fetching schedules:', error);
+      setError('An error occurred while fetching schedules');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchSchedules();
   }, []);
 

@@ -4,7 +4,7 @@ import { Calendar } from 'react-native-calendars';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { auth } from './firebase';
 import { db } from './firebase';
-import { doc, setDoc, serverTimestamp, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 
 const ScheduleScreen = ({ navigation }) => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -61,8 +61,9 @@ const ScheduleScreen = ({ navigation }) => {
           uid: uid, // Updated field name
         };
   
-        const scheduleDocRef = doc(db, 'schedules', uid);
-        await setDoc(scheduleDocRef, scheduleData, { merge: true });
+
+        await addDoc(collection(db, 'schedules'), scheduleData);
+
   
         Alert.alert('Success', 'Schedule saved successfully.');
       } else {

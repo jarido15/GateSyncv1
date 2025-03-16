@@ -10,7 +10,7 @@ import {
   StatusBar,
   ScrollView,
   BackHandler,
-  Alert,  // Add this import
+  Alert,
 } from 'react-native';
 import { auth, db } from '../components/firebase';
 import { collection, doc, getDocs, onSnapshot, query, where } from 'firebase/firestore';
@@ -38,12 +38,12 @@ const ParentHomeScreen = ({ navigation }) => {
         [
           {
             text: 'Cancel',
-            onPress: () => null,  // Do nothing on cancel
+            onPress: () => null,
             style: 'cancel',
           },
           {
             text: 'Yes',
-            onPress: () => BackHandler.exitApp(),  // Exit the app on Yes
+            onPress: () => BackHandler.exitApp(),
           },
         ],
         { cancelable: false }
@@ -74,11 +74,14 @@ const ParentHomeScreen = ({ navigation }) => {
           return;
         }
   
-        const allSchedules = [];
+        let allSchedules = [];
+        let unsubscribers = []; // Store all schedule listeners
+  
         // Loop through linked students and fetch schedules
-        for (const studentDoc of linkedStudentSnapshot.docs) {
+        linkedStudentSnapshot.forEach((studentDoc) => {
           const studentData = studentDoc.data();
           const uid = studentData.uid;
+          const username = studentData.username; // Get the username field
   
           // Query schedules where studentUid matches
           const scheduleQuery = query(
@@ -88,25 +91,31 @@ const ParentHomeScreen = ({ navigation }) => {
   
           // Listen to changes in schedules collection
           const unsubscribeSchedules = onSnapshot(scheduleQuery, (scheduleSnapshot) => {
-            allSchedules.length = 0; // Clear previous schedules
+            const studentSchedules = [];
             scheduleSnapshot.forEach((sched) => {
-              allSchedules.push(sched.data()); // Add schedule to the array
+              studentSchedules.push({ ...sched.data(), username });
             });
-            setSchedule(allSchedules); // Update schedule state with all schedules
+  
+            // Merge schedules from different students
+            allSchedules = [...allSchedules, ...studentSchedules];
+            setSchedule([...allSchedules]); // Update schedule state
           });
   
-          // Clean up the listener after the operation is completed
-          return () => unsubscribeSchedules();
-        }
+          // Store the unsubscribe function
+          unsubscribers.push(unsubscribeSchedules);
+        });
+  
+        // Cleanup function for all listeners
+        return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
       });
   
-      // Clean up the listener when the component is unmounted or the parent ref changes
+      // Cleanup listener for linked students
       return () => unsubscribeLinkedStudents();
     } catch (error) {
       console.error('Error fetching student schedule:', error);
     }
   };
-
+  
   const openMenu = () => {
     setMenuVisible(true);
     Animated.timing(slideAnim, {
@@ -136,6 +145,7 @@ const ParentHomeScreen = ({ navigation }) => {
     closeMenu();
     navigation.navigate(page);
   };
+
   return (
     <View style={styles.container}>
       <StatusBar backgroundColor="#BCE5FF" barStyle="light-content" />
@@ -202,7 +212,7 @@ const ParentHomeScreen = ({ navigation }) => {
         </TouchableOpacity>
         <Image source={require('../images/arrowright.png')} style={styles.arrowicon} />
         <Text style={styles.Text}> Link with Son / </Text>
-        <Text style={styles.Text}> Daughter</Text>
+        <Text style={styles.Text1}> Daughter</Text>
       </View>
 
       {/* Class Schedule Section */}
@@ -212,26 +222,36 @@ const ParentHomeScreen = ({ navigation }) => {
         </View>
 
         {/* Displaying schedule in table format */}
-        <ScrollView contentContainerStyle={styles.scheduleTable}>
-          {schedule.length > 0 ? (
-            <>
-              <View style={styles.tableHeader}>
-                <Text style={styles.tableHeaderText}>Date</Text>
-                <Text style={styles.tableHeaderText}>Class Start</Text>
-                <Text style={styles.tableHeaderText}>Class End</Text>
-              </View>
-              {schedule.map((sched, index) => (
-                <View key={index} style={styles.tableRow}>
-                  <Text style={styles.tableCell}>{sched.date}</Text>
-                  <Text style={styles.tableCell}>{sched.timeIn}</Text>
-                  <Text style={styles.tableCell}>{sched.timeOut}</Text>
-                </View>
-              ))}
-            </>
-          ) : (
-            <Text style={styles.schedule}> No class schedule found</Text>
-          )}
-        </ScrollView>
+      {/* Outer ScrollView for vertical scrolling */}
+<ScrollView style={{ flex: 1 }}>
+  {/* Inner ScrollView for horizontal scrolling */}
+  <ScrollView horizontal={true} contentContainerStyle={styles.scheduleTable}>
+    <View>
+      {/* Table Header */}
+      <View style={styles.tableHeader}>
+        <Text style={styles.tableHeaderText}>Name</Text>
+        <Text style={styles.tableHeaderText}>Date</Text>
+        <Text style={styles.tableHeaderText1}>Class Start</Text>
+        <Text style={styles.tableHeaderText2}>Class End</Text>
+      </View>
+
+      {/* Table Rows */}
+      {schedule.length > 0 ? (
+        schedule.map((sched, index) => (
+          <View key={index} style={styles.tableRow}>
+            <Text style={styles.tableCell1}>{sched.username}</Text>
+            <Text style={styles.tableCell2}>{sched.date}</Text>
+            <Text style={styles.tableCell3}>{sched.timeIn}</Text>
+            <Text style={styles.tableCell4}>{sched.timeOut}</Text>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.noScheduleText}>No class schedule found</Text>
+      )}
+    </View>
+  </ScrollView>
+</ScrollView>
+
       </View>
     </View>
   );
@@ -400,6 +420,13 @@ const styles = StyleSheet.create({
     top: -125,
     left: 185,
   },
+  Text1: {
+    fontWeight: '800',
+    fontSize: 20,
+    color: '#2488e5',
+    top: -125,
+    left: 185,
+  },
   schedcontainer: {
     width: '90%',
     height: 456,
@@ -445,6 +472,20 @@ const styles = StyleSheet.create({
     color: '#333',
     width: '30%',
   },
+  tableHeaderText1: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    color: '#333',
+    width: '30%',
+    right: 7,
+  },
+  tableHeaderText2: {
+    fontWeight: 'bold',
+    fontSize: 16,
+    color: '#333',
+    width: '30%',
+    right: 7,
+  },
   tableRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -452,10 +493,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E9F3FF',
   },
-  tableCell: {
+  tableCell1: {
+    fontSize: 16,
+    color: '#111',
+    fontWeight: '500',
+    width: '30%',
+  },
+  tableCell2: {
     fontSize: 16,
     color: '#666',
     width: '30%',
+    right: 14,
+  },
+  tableCell3: {
+    fontSize: 16,
+    color: '#666',
+    width: '30%',
+    left: 5,
+  },
+  tableCell4: {
+    fontSize: 16,
+    color: '#666',
+    width: '30%',
+    left: 4,
   },
   schedule: {
     fontSize: 15,
